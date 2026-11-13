@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local-only material: scratch output and anything that may contain personal
+# paths or host details. Run archives and workspaces live in the data root,
+# outside this checkout, and are never committed.
+.local/
+
+# Secrets and editor state
+.env
+.env.*
+*.pem
+*.key
+.vscode/
+.idea/
+.claude/settings.local.json
+
+# Model weights must never be committed
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+*.pt
