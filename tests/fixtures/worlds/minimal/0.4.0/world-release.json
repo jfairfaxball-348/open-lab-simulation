@@ -2,10 +2,10 @@
   "schema": "open-lab/world-release",
   "schema_version": "1.0.0",
   "world_id": "minimal",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "name": "Minimal world",
-  "description": "The smallest useful world: two deterministic capabilities (text.stats, math.evaluate) and one local model provider manifest, included as documentation only.",
-  "created_at": "2026-11-14T08:43:30Z",
+  "description": "Five simple capabilities: text statistics, exact arithmetic, workspace text writing, directory listing and UTC time, with a deterministic registry and generated documentation.",
+  "created_at": "2026-11-14T09:24:31Z",
   "status": "validated",
   "builder": {
     "version": "0.1.0"
@@ -32,6 +32,24 @@
       "version": "0.1.0",
       "manifest_path": "capabilities/text.stats/capability.json",
       "sha256": "447ab65350f3a917a9f6e3c54f7d084bf6f01a94b3709fa9f877c09e46bd8b8d"
+    },
+    {
+      "id": "time.now",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/time.now/capability.json",
+      "sha256": "c76019c26c20938f454f56111130a822c3962be8303fd2016d169dd2e096520c"
+    },
+    {
+      "id": "workspace.list",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.list/capability.json",
+      "sha256": "caa49c66bd2ab907124950a580889b3d9dbaf7bc2bad23b43b804d5b821be78b"
+    },
+    {
+      "id": "workspace.write",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.write/capability.json",
+      "sha256": "31a52b8c94d7cf06daf0484c42b05d4c545de559abeaeb3aeb5769651127effb"
     }
   ],
   "model_manifests": [
@@ -67,7 +85,7 @@
     "subprocess": false,
     "gpu": true
   },
-  "notes": "0.3.0 bundles observation-event 1.1.0 and experiment-config 1.1.0 (the continuation message, decision OD-5) and records the orchestrator candidates measured in S003c. The capabilities are unchanged from 0.1.0.",
+  "notes": "0.4.0 adds the S005a registry index, generated documentation and workspace.write, workspace.list and time.now. Model choice and bundled schema versions are unchanged.",
   "extensions": {
     "files": [
       {
@@ -85,6 +103,30 @@
       {
         "path": "capabilities/text.stats/text_stats.py",
         "sha256": "780f8bb0a2beb5e9e761e4237bd61ca53642e5dcbd2b916510054bdc874fbc90"
+      },
+      {
+        "path": "capabilities/time.now/capability.json",
+        "sha256": "c76019c26c20938f454f56111130a822c3962be8303fd2016d169dd2e096520c"
+      },
+      {
+        "path": "capabilities/time.now/implementation.py",
+        "sha256": "d52f466e51c7e49ada44699eddc53b6de26e63404928b8531effeabd3fd1992d"
+      },
+      {
+        "path": "capabilities/workspace.list/capability.json",
+        "sha256": "caa49c66bd2ab907124950a580889b3d9dbaf7bc2bad23b43b804d5b821be78b"
+      },
+      {
+        "path": "capabilities/workspace.list/implementation.py",
+        "sha256": "7eadc7fc3e20a795b221ccfee2bea1dce43834bb02efa16783260dc9a4a8e942"
+      },
+      {
+        "path": "capabilities/workspace.write/capability.json",
+        "sha256": "31a52b8c94d7cf06daf0484c42b05d4c545de559abeaeb3aeb5769651127effb"
+      },
+      {
+        "path": "capabilities/workspace.write/implementation.py",
+        "sha256": "273a04abce10125ba12b4bb0d2e596cc4368e17753d28cef9e9db83d75459991"
       },
       {
         "path": "contracts/v1/artifact-metadata.schema.json",
@@ -121,11 +163,35 @@
       {
         "path": "models/ollama-local.json",
         "sha256": "fc14d80d5d15e26bed6e9295fef32c222ce9ae3a926855360c599bd6c35edd6e"
+      },
+      {
+        "path": "registry/docs/math.evaluate.txt",
+        "sha256": "22bf4503acd8b8a22a6989a3f7a95ebf9d61705bd39b2d22f806ce88541792e4"
+      },
+      {
+        "path": "registry/docs/text.stats.txt",
+        "sha256": "cde3c9fb117ff99dc808a0d19e4560ea0f39541e7db437076b3355c54b5484b2"
+      },
+      {
+        "path": "registry/docs/time.now.txt",
+        "sha256": "af5a159bf43554e4e6acd43a8d0086b8a52506479aaaf2e5485b96f7c44e0697"
+      },
+      {
+        "path": "registry/docs/workspace.list.txt",
+        "sha256": "05de9b4f6cee8f5d5ee130511496cba07ddcbba80342a2b5a4b973eaecfc30e1"
+      },
+      {
+        "path": "registry/docs/workspace.write.txt",
+        "sha256": "222e9ed6b372d645222f9c50060419bbe68cf9a9766cb1753e1d3976dc8eb8a2"
+      },
+      {
+        "path": "registry/index.json",
+        "sha256": "6010c82e55b2fdcf98415fe5ab8c25980c3f7b9250ae039d67d0d89206677e57"
       }
     ]
   },
   "content_digest": {
     "algorithm": "sha256",
-    "value": "52d1fb64f73fab8324959481fd681a8f5ee5f5684bf60ce31b31a0c716058ff9"
+    "value": "8d22ba1fe4bf3aa96cb8cb87b711778d9608d17cfa3ffac423dc1e15ab44d66f"
   }
 }

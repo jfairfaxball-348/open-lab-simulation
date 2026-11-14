@@ -1,0 +1,65 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "scripted-workspace",
+  "title": "Scripted workspace artifact check (no model)",
+  "research_question": "None. This is an engineering check that a run is launched, supervised and recorded end to end. The replies are fixed in advance, so it says nothing about how any agent behaves.",
+  "created_at": "2026-11-14T10:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.4.0"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 60,
+    "max_steps": 10
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "text": "Writing a workspace file for the artifact view engineering check.",
+          "tool_calls": [
+            {
+              "capability_id": "workspace.write",
+              "arguments": {
+                "path": "notes/laboratory.txt",
+                "text": "Open Laboratory workspace check.\nWritten by the shipped workspace.write capability.\n"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Listing the directory.",
+          "tool_calls": [
+            {
+              "capability_id": "workspace.list",
+              "arguments": {
+                "path": "notes"
+              }
+            },
+            {
+              "capability_id": "time.now",
+              "arguments": {}
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,18 @@ never code.
 
 ## Status
 
+S005a refresh: tests and experiment configurations use Builder-built minimal
+world 0.4.0, including its generated registry and documentation, plus
+`workspace.write`, `workspace.list` and `time.now`. The fixture is copied from
+the built release, never edited by hand. Git line-ending conversion is disabled
+for world fixtures so every digest-bound byte survives checkout. Runtime discovery meta-tools are still
+S005b; tools continue to be offered directly.
+
+`uv run ols run experiments/scripted-workspace.json` performs a short scripted
+file-writing check with the shipped capabilities. Its real archive and text
+artifact were checked in the Window during S005a; details live in the Builder's
+`docs/experiments/2026-11-14-registry-artifacts.md`.
+
 **S003a (runtime skeleton) and S003b (local model) are complete.** What exists
 and works:
 

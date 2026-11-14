@@ -384,6 +384,40 @@ def test_cli_run_then_verify(root, capsys):
     assert "intact" in capsys.readouterr().out
 
 
+def test_shipped_workspace_tools_create_preserved_artifact(root, make_config):
+    config = make_config([
+        {"tool_calls": [call("workspace.write", path="notes/check.txt", text="caf\u00e9\n")]},
+        {"tool_calls": [call("workspace.list", path="notes"), call("time.now")]},
+    ])
+    result = run_experiment(config, root)
+    assert result.state == "completed"
+    events = events_of(result.archive)
+    outcomes = results(events)
+    assert [r["status"] for r in outcomes] == ["ok", "ok", "ok"]
+    assert outcomes[0]["result"] == {"path": "notes/check.txt", "bytes_written": 6}
+    assert outcomes[1]["result"] == {
+        "entries": [{"path": "notes/check.txt", "kind": "file"}]}
+    assert outcomes[2]["result"]["utc"].endswith("Z")
+    created = [e for e in events if e["type"] == "artifact.created"]
+    assert len(created) == 1 and created[0]["payload"]["path"] == "notes/check.txt"
+    assert verify_archive(result.archive) == []
+
+
+def test_shipped_write_permission_and_traversal_are_refused(root, make_config):
+    config = make_config([{"tool_calls": [
+        call("workspace.write", path="../escape.txt", text="no")]}])
+    result = run_experiment(config, root)
+    assert results(events_of(result.archive))[0]["status"] == "error"
+    assert not (root / "workspaces/escape.txt").exists()
+    config = make_config([{"tool_calls": [
+        call("workspace.write", path="file.txt", text="no")]}],
+        permissions={"filesystem": "workspace_read"}, name="read-only")
+    result = run_experiment(config, root)
+    assert results(events_of(result.archive))[0]["status"] == "denied"
+    assert "artifact.created" not in types(events_of(result.archive))
+    assert verify_archive(result.archive) == []
+
+
 def test_cli_reports_a_refusal(root, make_config, capsys):
     config = make_config([], world={"version": "9.9.9"})
     assert main(["run", str(config), "--data-root", str(root)]) == 2

@@ -41,7 +41,9 @@ def test_our_digest_agrees_with_the_builder(tmp_path):
     """The fixture was built by the Builder; this is an independent implementation."""
     world = load_world(FIXTURE_WORLD)
     assert compute_content_digest(FIXTURE_WORLD, world.manifest) == world.digest
-    assert sorted(world.capabilities) == ["math.evaluate", "text.stats"]
+    assert sorted(world.capabilities) == [
+        "math.evaluate", "text.stats", "time.now", "workspace.list", "workspace.write"
+    ]
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,139 @@
+# Current UTC time (time.now)
+
+## categories
+
+[
+  "time"
+]
+
+## demonstrations
+
+[
+  {
+    "deterministic": false,
+    "id": "basic",
+    "input": {},
+    "title": "Basic invocation in an empty workspace"
+  }
+]
+
+## description
+
+Returns an ISO 8601 UTC timestamp with second precision. This is the host wall clock, not elapsed time or the supervisor deadline.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid arguments or unavailable resource.",
+    "recovery": "Check the schema, permissions and relative path.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+time.now
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {},
+  "required": [],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "clock",
+  "date",
+  "now",
+  "current",
+  "timestamp",
+  "utc"
+]
+
+## limitations
+
+[
+  "No network access or code execution.",
+  "Host clock can change; not a monotonic timer."
+]
+
+## name
+
+Current UTC time
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "utc": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "utc"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 16,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "basic"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Read the current UTC date and time from the host clock.
+
+## version
+
+0.1.0

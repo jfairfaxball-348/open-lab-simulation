@@ -1,0 +1,109 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "workspace.list",
+  "version": "0.1.0",
+  "name": "List workspace directory",
+  "summary": "List files and directories directly inside a workspace directory.",
+  "description": "Lists immediate children sorted by relative path. The default path is the workspace root, expressed as a dot. Returns paths and kinds, without reading file contents. Hidden files are included.",
+  "categories": [
+    "workspace",
+    "files"
+  ],
+  "keywords": [
+    "list",
+    "directory",
+    "folder",
+    "files",
+    "browse"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240,
+        "default": "."
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "entries"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "entries": {
+        "type": "array",
+        "maxItems": 1000,
+        "items": {
+          "type": "object",
+          "required": [
+            "path",
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "file",
+                "directory"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_read",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 16
+  },
+  "demonstrations": [
+    {
+      "id": "basic",
+      "title": "Basic invocation in an empty workspace",
+      "input": {},
+      "expected_output": {
+        "entries": []
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "basic"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "No network access or code execution.",
+    "Forward-slash relative paths only; traversal, absolute paths, links and Windows special names are refused.",
+    "Process-tier path checks are not an OS sandbox; concurrent path replacement is not contained.",
+    "Non-recursive; directories over 1000 entries are refused."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid arguments or unavailable resource.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Check the schema, permissions and relative path."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

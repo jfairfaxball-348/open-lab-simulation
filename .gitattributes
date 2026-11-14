@@ -1,1 +1,5 @@
 * text=auto eol=lf
+# Built releases are digest-bound bytes, including embedded manifest line breaks.
+tests/fixtures/worlds/** -text
+# Documentation preserves manifest prose verbatim, including CR and trailing spaces.
+tests/fixtures/worlds/**/registry/docs/*.txt -diff
