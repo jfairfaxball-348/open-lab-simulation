@@ -55,7 +55,6 @@ class ModelReply:
 
 class ModelClient(Protocol):
     model_id: str
-    # True for real models: a reply with no tool call ends the run.
 
     def chat(self, messages: list[dict[str, Any]]) -> ModelReply | None:
         """The next reply, or None when the model has nothing further to say.
@@ -165,6 +164,25 @@ def resolve_name(name: Any, names: dict[str, str]) -> Any:
     return names.get(function_name(candidate), candidate)
 
 
+def repair_nested_arguments(capability_id: Any, arguments: Any) -> tuple[Any, bool]:
+    """Decode a JSON-encoded capability input object; never infer ids or fields."""
+    if capability_id != "capabilities.invoke" or not isinstance(arguments, dict):
+        return arguments, False
+    repaired = False
+    # Some clients/models wrap the complete invocation arguments one extra
+    # time. Unwrap only the exact envelope; never supply a missing id/input.
+    if set(arguments) == {"arguments"}:
+        inner = arguments["arguments"]
+        if (isinstance(inner, dict) and set(inner) == {"id", "arguments"}
+                and isinstance(inner["id"], str)):
+            arguments, repaired = inner, True
+    if isinstance(arguments.get("arguments"), str):
+        decoded, _ = read_arguments(arguments["arguments"])
+        if isinstance(decoded, dict):
+            return {**arguments, "arguments": decoded}, True
+    return arguments, repaired
+
+
 def parse_reply(message: dict[str, Any], names: dict[str, str]) -> tuple[str, list[ToolCall], int]:
     """Read text and tool calls out of an assistant message. Returns (text, calls, repairs)."""
     text = message.get("content") or ""
@@ -177,12 +195,14 @@ def parse_reply(message: dict[str, Any], names: dict[str, str]) -> tuple[str, li
         function = function if isinstance(function, dict) else {}
         raw = function.get("arguments")
         arguments, repaired = read_arguments(raw)
-        repairs += repaired
         name = function.get("name")
+        capability_id = resolve_name(name, names)
+        arguments, nested_repaired = repair_nested_arguments(capability_id, arguments)
+        repairs += repaired or nested_repaired
         calls.append(ToolCall(
             str(entry.get("id") or f"call-{index}") if isinstance(entry, dict) else f"call-{index}",
             name if isinstance(name, str) else "",
-            resolve_name(name, names), arguments,
+            capability_id, arguments,
             raw if isinstance(raw, str) else json.dumps(raw),
         ))
     if not calls:
@@ -192,8 +212,10 @@ def parse_reply(message: dict[str, Any], names: dict[str, str]) -> tuple[str, li
             arguments = candidate.get("parameters", candidate.get("arguments"))
             capability_id = resolve_name(candidate["name"], names)
             if isinstance(arguments, dict) and capability_id in names.values():
+                raw_arguments = json.dumps(arguments)
+                arguments, _ = repair_nested_arguments(capability_id, arguments)
                 calls.append(ToolCall("repaired-0", candidate["name"], capability_id,
-                                      arguments, json.dumps(arguments)))
+                                      arguments, raw_arguments))
                 repairs += 1
     return text, calls, repairs
 
@@ -216,8 +238,15 @@ def fit_context(
     def size() -> int:
         return fixed_chars + sum(len(json.dumps(m)) for m in messages)
 
+    # Fresh tool results must reach the model at least once. In particular a
+    # just-described capability must not become a truncation notice. Preserve
+    # the entire latest assistant/tool group and discard older turns instead.
+    recent = len(messages) - 1
+    if messages and messages[-1].get("role") == "tool":
+        while recent > 0 and messages[recent].get("role") == "tool":
+            recent -= 1
     truncated = 0
-    for message in messages:
+    for message in messages[:recent]:
         if size() <= budget_chars:
             break
         content = message.get("content")
@@ -227,14 +256,16 @@ def fit_context(
             message["content"] = TRUNCATED_RESULT
             truncated += 1
     dropped = 0
-    while size() > budget_chars and len(messages) > 2:
-        end = 2
+    # The generic system preamble and the initial user premise both survive.
+    protected = 2 if messages and messages[0].get("role") == "system" else 1
+    while size() > budget_chars and len(messages) > protected + 1:
+        end = protected + 1
         while end < len(messages) and messages[end].get("role") == "tool":
             end += 1
         if end >= len(messages):
             break  # the oldest turn runs into the latest message, which must stay
-        dropped += end - 1
-        del messages[1:end]
+        dropped += end - protected
+        del messages[protected:end]
     return truncated, dropped
 
 

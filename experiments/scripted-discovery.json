@@ -1,0 +1,87 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "scripted-discovery",
+  "title": "Scripted discovery meta-tool check (no model)",
+  "research_question": "None. This is an engineering check that a run is launched, supervised and recorded end to end. The replies are fixed in advance, so it says nothing about how any agent behaves.",
+  "created_at": "2026-11-14T10:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check"
+  ],
+  "initial_prompt": "Explore the world and keep a short note about what you find.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.5.0"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 60,
+    "max_steps": 10
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "text": "Finding a way to keep notes.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "save notes",
+                "category": "workspace"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Reading the discovered documentation.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "workspace.write"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Trying a shipped example.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.demonstrate",
+              "arguments": {
+                "id": "workspace.write"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Writing a new note.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "discovery.txt",
+                  "text": "Discovered through search and documentation.\n"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

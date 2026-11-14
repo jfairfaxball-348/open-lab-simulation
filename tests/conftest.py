@@ -11,7 +11,7 @@ from open_lab_simulation.world import MANIFEST_NAME, compute_content_digest, fil
 
 REPO = Path(__file__).resolve().parent.parent
 # A release built by the Builder (olb world build worlds/minimal), copied here as test data.
-FIXTURE_WORLD = REPO / "tests" / "fixtures" / "worlds" / "minimal" / "0.4.0"
+FIXTURE_WORLD = REPO / "tests" / "fixtures" / "worlds" / "minimal" / "0.5.0"
 
 # Capabilities that exist only for these tests. Each is {id: (permissions, timeout, code)}.
 TEST_CAPABILITIES = {
@@ -102,6 +102,25 @@ def add_test_capabilities(release: Path) -> None:
             "manifest_path": f"capabilities/{capability_id}/capability.json",
             "sha256": file_sha256(directory / "capability.json"),
         })
+    # Test-only tools must be in the generated discovery data of this private copy.
+    import re
+    registry_path = release / "registry/index.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    for item in entries:
+        ident = item["id"]
+        manifest = json.loads((release / item["manifest_path"]).read_text(encoding="utf-8"))
+        fields = {}
+        for key in ("id", "name", "keywords", "categories", "summary", "description"):
+            value = manifest.get(key, "")
+            value = " ".join(value) if isinstance(value, list) else value
+            fields[key] = sorted(set(re.findall(r"[^\W_]+", value.casefold())))
+        doc = f"registry/docs/{ident}.txt"
+        (release / doc).write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
+        registry["capabilities"].append({
+            **{k: manifest[k] for k in ("id", "name", "summary", "categories", "keywords")},
+            "documentation_path": doc, "tokens": fields,
+        })
+    registry_path.write_text(json.dumps(registry), encoding="utf-8", newline="\n")
     restamp(release, lambda m: m["capabilities"].extend(entries))
 
 
@@ -109,7 +128,7 @@ def add_test_capabilities(release: Path) -> None:
 def root(tmp_path) -> Path:
     """A private data root holding the minimal world plus the test-only capabilities."""
     data = tmp_path / "data"
-    release = data / "worlds" / "minimal" / "0.4.0"
+    release = data / "worlds" / "minimal" / "0.5.0"
     shutil.copytree(FIXTURE_WORLD, release)
     add_test_capabilities(release)
     return data
@@ -117,11 +136,12 @@ def root(tmp_path) -> Path:
 
 @pytest.fixture
 def release(root) -> Path:
-    return root / "worlds" / "minimal" / "0.4.0"
+    return root / "worlds" / "minimal" / "0.5.0"
 
 
 def call(capability_id: str, **arguments) -> dict:
-    return {"capability_id": capability_id, "arguments": arguments}
+    return {"capability_id": "capabilities.invoke",
+            "arguments": {"id": capability_id, "arguments": arguments}}
 
 
 @pytest.fixture
@@ -135,7 +155,7 @@ def make_config(tmp_path):
             "title": "Test run",
             "created_at": "2026-11-13T00:00:00Z",
             "initial_prompt": "You may use whatever you find.",
-            "world": {"world_id": "minimal", "version": "0.4.0"},
+            "world": {"world_id": "minimal", "version": "0.5.0"},
             "orchestrator": {"provider_id": "scripted", "model_id": "scripted"},
             "limits": {"wall_clock_s": wall_clock_s},
             "permissions": {"filesystem": "workspace_write", "network": "none"},

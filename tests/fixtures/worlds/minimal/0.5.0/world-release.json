@@ -2,10 +2,10 @@
   "schema": "open-lab/world-release",
   "schema_version": "1.0.0",
   "world_id": "minimal",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "name": "Minimal world",
   "description": "Five simple capabilities: text statistics, exact arithmetic, workspace text writing, directory listing and UTC time, with a deterministic registry and generated documentation.",
-  "created_at": "2026-11-14T09:24:31Z",
+  "created_at": "2026-11-14T09:36:32Z",
   "status": "validated",
   "builder": {
     "version": "0.1.0"
@@ -15,7 +15,7 @@
     "capability": "1.0.1",
     "model-provider": "1.0.0",
     "experiment-config": "1.1.0",
-    "observation-event": "1.1.0",
+    "observation-event": "1.2.0",
     "artifact-metadata": "1.0.0",
     "checkpoint-metadata": "1.0.0",
     "common": "1.0.0"
@@ -85,7 +85,7 @@
     "subprocess": false,
     "gpu": true
   },
-  "notes": "0.4.0 adds the S005a registry index, generated documentation and workspace.write, workspace.list and time.now. Model choice and bundled schema versions are unchanged.",
+  "notes": "0.5.0 bundles observation-event 1.2.0 so the Simulation can record its generic discovery preamble (S005b). Capabilities, registry format and model selection are unchanged from 0.4.0.",
   "extensions": {
     "files": [
       {
@@ -154,7 +154,7 @@
       },
       {
         "path": "contracts/v1/observation-event.schema.json",
-        "sha256": "2047d60a44c3674c76625edbf8881db33d58bee3fdd09c71deb6786d91c902e1"
+        "sha256": "f28f774e3e7615e1e97e74088792adab99386a73eb0cbf68f53b468dffe9fc63"
       },
       {
         "path": "contracts/v1/world-release.schema.json",
@@ -192,6 +192,6 @@
   },
   "content_digest": {
     "algorithm": "sha256",
-    "value": "8d22ba1fe4bf3aa96cb8cb87b711778d9608d17cfa3ffac423dc1e15ab44d66f"
+    "value": "21474d3b0b84a6bb0829a08e9c5fd18fb983292749c0533b8afd08f71cfbff0c"
   }
 }

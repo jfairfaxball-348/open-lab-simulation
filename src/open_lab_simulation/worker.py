@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .model import ModelClient, ModelError, OpenAIChatModel, ScriptedModel
+from .registry import META_TOOLS, PREAMBLE, Registry
 from .toolhost import ToolHost
 
 MAX_OUTPUT_CHARS = 100_000
@@ -67,7 +68,11 @@ def run_loop(
     continuation message, records exactly that, and asks the model again. The
     run then ends only at the step limit, the deadline or a failure.
     """
-    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    emit({"recorder": "agent_runtime", "type": "environment.message",
+          "actor": {"kind": "system"}, "payload": {"kind": "preamble", "text": PREAMBLE}})
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": PREAMBLE}, {"role": "user", "content": prompt},
+    ]
     steps = 0
     while max_steps is None or steps < max_steps:
         started = time.monotonic()
@@ -91,6 +96,13 @@ def run_loop(
             },
         })
         output: dict[str, Any] = {"text": reply.text[:MAX_OUTPUT_CHARS]}
+        if reply.tool_calls:
+            # Keep the emitted names/argument strings as evidence distinct
+            # from the repaired arguments subsequently sent to the tool host.
+            output["extensions"] = {"raw_tool_calls": [
+                {"id": call.id, "name": call.name, "arguments": call.raw_arguments}
+                for call in reply.tool_calls
+            ]}
         if len(reply.text) > MAX_OUTPUT_CHARS:
             output["truncated"] = True
         output_seq = emit({"recorder": "agent_runtime", "type": "agent.output",
@@ -133,19 +145,15 @@ def main() -> int:
     if chosen["kind"] == "scripted":
         model = ScriptedModel(chosen["replies"])
     else:
-        allow, deny = spec.get("allow"), set(spec.get("deny") or [])
-        offered = [
-            manifest for capability_id, (_, manifest) in capabilities.items()
-            if capability_id not in deny and (allow is None or capability_id in allow)
-        ]
         model = OpenAIChatModel(
-            chosen["model_id"], chosen["base_url"], chosen["provider_ref"], offered,
+            chosen["model_id"], chosen["base_url"], chosen["provider_ref"], META_TOOLS,
             chosen.get("sampling"), chosen.get("context_tokens"),
         )
     actor = spec["actor"]
     host = ToolHost(
         capabilities, Path(spec["workspace"]), spec["permissions"], channel.emit, actor,
         allow=spec.get("allow"), deny=spec.get("deny"),
+        registry=Registry(release, capabilities),
     )
     reason, steps = run_loop(
         model, host, channel.emit, spec["initial_prompt"], spec.get("max_steps"), actor,

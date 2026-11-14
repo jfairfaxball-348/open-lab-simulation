@@ -25,6 +25,7 @@ from open_lab_simulation.model import (
     resolve_name,
     tool_definitions,
 )
+from open_lab_simulation.registry import PREAMBLE
 from open_lab_simulation.supervisor import LaunchError, run_experiment
 from open_lab_simulation.world import file_sha256, load_world
 
@@ -147,6 +148,11 @@ def tool_call(name: str, arguments, call_id: str = "c1") -> dict:
             "function": {"name": name, "arguments": arguments}}
 
 
+def invoke_call(ident, arguments, call_id="c1"):
+    return tool_call("capabilities_invoke",
+                     json.dumps({"id": ident, "arguments": arguments}), call_id)
+
+
 def model_calls(events: list[dict]) -> list[dict]:
     return [e["payload"] for e in events if e["type"] == "model.call"]
 
@@ -160,9 +166,9 @@ def tool_results(events: list[dict]) -> list[dict]:
 def test_run_with_a_model_server_uses_tools_and_is_recorded(model_root, model_config, server):
     server.replies = [
         {"content": "", "tool_calls": [
-            tool_call("text_stats", json.dumps({"text": "hello world"}))]},
+            invoke_call("text.stats", {"text": "hello world"})]},
         {"content": "Now some arithmetic.", "tool_calls": [
-            tool_call("math_evaluate", json.dumps({"expression": "1/2 + 1/4"}), "c2")]},
+            invoke_call("math.evaluate", {"expression": "1/2 + 1/4"}, "c2")]},
         {"content": "I have finished."},
     ]
     result = run_experiment(model_config(), model_root)
@@ -196,19 +202,21 @@ def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
 ):
     server.replies = [
         {"content": "I will just think for a while."},
-        {"content": "", "tool_calls": [tool_call("text_stats", json.dumps({"text": "a b"}))]},
+        {"content": "", "tool_calls": [invoke_call("text.stats", {"text": "a b"})]},
     ]
     result = run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 3}), model_root)
     assert (result.state, result.reason) == ("terminated", "max_steps")
     events = events_of(result.archive)
     sequence = [e["type"] for e in events if e["type"] != "run.state_changed"]
     assert sequence == [
+        "environment.message",                                    # generic system preamble
         "model.call", "agent.output", "environment.message",       # no tool call: continue
         "model.call", "agent.output", "tool.call", "tool.result",  # the model acts again
         "model.call", "agent.output", "environment.message",       # "Nothing more.": continue
         "supervisor.action",                                       # ended by the step limit
     ]
-    messages = [e for e in events if e["type"] == "environment.message"]
+    messages = [e for e in events if e["type"] == "environment.message"
+                and e["payload"]["kind"] == "continuation"]
     for message in messages:
         assert message["payload"]["kind"] == "continuation"
         assert message["payload"]["text"] == DEFAULT_CONTINUATION
@@ -218,6 +226,7 @@ def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
         assert answered["type"] == "agent.output" and answered["seq"] == message["seq"] - 1
     # The model was given exactly the recorded text, as a user turn, and nothing else.
     assert server.requests[1]["messages"] == [
+        {"role": "system", "content": PREAMBLE},
         {"role": "user", "content": "You may use whatever you find."},
         {"role": "assistant", "content": "I will just think for a while."},
         {"role": "user", "content": DEFAULT_CONTINUATION},
@@ -231,7 +240,7 @@ def test_the_experiment_chooses_the_continuation_text(model_root, model_config, 
                           continuation={"message": "Time passes."})
     result = run_experiment(config, model_root)
     texts = [e["payload"]["text"] for e in events_of(result.archive)
-             if e["type"] == "environment.message"]
+             if e["type"] == "environment.message" and e["payload"]["kind"] == "continuation"]
     assert texts == ["Time passes.", "Time passes."]
     assert server.requests[1]["messages"][-1] == {"role": "user", "content": "Time passes."}
 
@@ -243,7 +252,8 @@ def test_dropped_turns_keep_the_prompt_and_are_recorded(root, release, server, m
     calls = model_calls(events_of(result.archive))
     assert any(c.get("context_dropped_messages") for c in calls)
     last = server.requests[-1]["messages"]
-    assert last[0] == {"role": "user", "content": "You may use whatever you find."}
+    assert last[:2] == [{"role": "system", "content": PREAMBLE},
+                        {"role": "user", "content": "You may use whatever you find."}]
     assert last[-1]["role"] == "user" and "reply 0 " not in json.dumps(last)
     assert verify_archive(result.archive) == []
 
@@ -252,18 +262,21 @@ def test_requests_carry_only_the_prompt_the_tools_and_the_conversation(
     model_root, model_config, server
 ):
     server.replies = [{"content": "", "tool_calls": [
-        tool_call("text_stats", json.dumps({"text": "a b"}))]}]
+        invoke_call("text.stats", {"text": "a b"})]}]
     run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 2}), model_root)
     first, second = server.requests
     assert first["model"] == "llama3.2:3b" and first["stream"] is False
     assert (first["temperature"], first["seed"]) == (0, 7)
-    # One prompt in: no system message, nothing added by the runtime.
-    assert first["messages"] == [{"role": "user", "content": "You may use whatever you find."}]
+    # One user premise and the recorded generic system preamble; no capability catalogue.
+    assert first["messages"] == [
+        {"role": "system", "content": PREAMBLE},
+        {"role": "user", "content": "You may use whatever you find."}]
     offered = {tool["function"]["name"] for tool in first["tools"]}
-    assert {"text_stats", "math_evaluate"} <= offered
+    assert offered == {"capabilities_search", "capabilities_describe",
+                       "capabilities_demonstrate", "capabilities_invoke"}
     assert all("." not in name for name in offered)
-    assistant, result = second["messages"][1:]
-    assert assistant["tool_calls"][0]["function"]["name"] == "text_stats"
+    assistant, result = second["messages"][2:]
+    assert assistant["tool_calls"][0]["function"]["name"] == "capabilities_invoke"
     assert (result["role"], result["tool_call_id"]) == ("tool", "c1")
     assert json.loads(result["content"]) == {
         "status": "ok", "result": {"characters": 3, "words": 2, "lines": 1}
@@ -289,19 +302,22 @@ def test_exact_model_identity_is_stored_in_the_archive(model_root, model_config)
 def test_malformed_tool_calls_are_repaired_or_recorded(model_root, model_config, server):
     server.replies = [
         {"content": "", "tool_calls": [
-            tool_call("text_stats", '```json\n{"text": "fenced"}\n```', "a"),
-            tool_call("text.stats", {"text": "already an object"}, "b"),
-            tool_call("text_stats", "this is not json", "c"),
+            tool_call("capabilities_invoke",
+                      '```json\n{"id":"text.stats","arguments":{"text":"fenced"}}\n```', "a"),
+            tool_call("capabilities.invoke",
+                      {"id": "text.stats", "arguments": {"text": "already an object"}}, "b"),
+            tool_call("capabilities_invoke", "this is not json", "c"),
             tool_call("make_coffee", "{}", "d"),
         ]},
-        {"content": '{"name": "math_evaluate", "parameters": {"expression": "2 ** 10"}}'},
+        {"content": '{"name":"capabilities_invoke","parameters":'
+                    '{"id":"math.evaluate","arguments":{"expression":"2 ** 10"}}}'},
         {"content": "done"},
     ]
     result = run_experiment(model_config(), model_root)
     events = events_of(result.archive)
     statuses = [(r["status"], r.get("error", "")) for r in tool_results(events)]
     assert statuses[0] == ("ok", "") and statuses[1] == ("ok", "")
-    assert statuses[2] == ("error", "unknown capability 'make_coffee'")
+    assert statuses[2] == ("error", "unknown discovery tool 'make_coffee'")
     assert statuses[3] == ("ok", "")
     assert tool_results(events)[3]["result"] == {"value": 1024, "exact": "1024"}
     (malformed,) = [e for e in events if e["type"] == "error"]
@@ -309,8 +325,13 @@ def test_malformed_tool_calls_are_repaired_or_recorded(model_root, model_config,
     # What the model wrote is kept verbatim; that a repair happened is on the record.
     assert model_calls(events)[0]["repaired_tool_calls"] == 1
     assert model_calls(events)[1]["repaired_tool_calls"] == 1
+    raw_calls = next(e["payload"]["extensions"]["raw_tool_calls"]
+                     for e in events if e["type"] == "agent.output")
+    assert raw_calls[0]["arguments"] == (
+        '```json\n{"id":"text.stats","arguments":{"text":"fenced"}}\n```')
+    assert raw_calls[0]["name"] == "capabilities_invoke"
     assert [e["payload"]["text"] for e in events if e["type"] == "agent.output"][1].startswith(
-        '{"name": "math_evaluate"'
+        '{"name":"capabilities_invoke"'
     )
     assert verify_archive(result.archive) == []
 
@@ -318,7 +339,8 @@ def test_malformed_tool_calls_are_repaired_or_recorded(model_root, model_config,
 def test_denied_capabilities_are_not_offered_to_the_model(model_root, model_config, server):
     run_experiment(model_config(capabilities={"deny": ["math.evaluate"]}), model_root)
     offered = {tool["function"]["name"] for tool in server.requests[0]["tools"]}
-    assert "math_evaluate" not in offered and "text_stats" in offered
+    assert offered == {"capabilities_search", "capabilities_describe",
+                       "capabilities_demonstrate", "capabilities_invoke"}
 
 
 def test_reasoning_channel_is_never_recorded(model_root, model_config, server):
@@ -335,7 +357,7 @@ def test_old_tool_results_are_dropped_to_fit_the_context(root, release, server, 
     long_text = "word " * 400
     server.replies = [
         {"content": long_text, "tool_calls": [
-            tool_call("text_stats", json.dumps({"text": long_text}), f"c{n}")]}
+            invoke_call("text.stats", {"text": long_text}, f"c{n}")]}
         for n in range(3)
     ]
     result = run_experiment(model_config(), root)
@@ -343,7 +365,7 @@ def test_old_tool_results_are_dropped_to_fit_the_context(root, release, server, 
     # These results are shorter than the blanking notice, so whole turns are dropped
     # instead (the unit tests cover blanking long results).
     assert any(c.get("context_dropped_messages") for c in calls)
-    assert server.requests[-1]["messages"][0] == {
+    assert server.requests[-1]["messages"][1] == {
         "role": "user", "content": "You may use whatever you find."}
     assert verify_archive(result.archive) == []
 

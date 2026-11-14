@@ -15,8 +15,24 @@ S005a refresh: tests and experiment configurations use Builder-built minimal
 world 0.4.0, including its generated registry and documentation, plus
 `workspace.write`, `workspace.list` and `time.now`. The fixture is copied from
 the built release, never edited by hand. Git line-ending conversion is disabled
-for world fixtures so every digest-bound byte survives checkout. Runtime discovery meta-tools are still
-S005b; tools continue to be offered directly.
+for world fixtures so every digest-bound byte survives checkout. S005b updates
+the fixture and experiment configurations to minimal world 0.5.0, which bundles
+observation-event 1.2.0 for the recorded discovery preamble.
+
+**S005b discovery is implemented.** Only `capabilities.search`, `.describe`,
+`.demonstrate` and `.invoke` are offered to the model. Search reads the world's
+registry; describe returns full documentation, the input schema and an example
+call; demonstrations execute real code and can change the workspace. Every
+interface enforces the experiment's capability restrictions and permissions.
+Direct capability calls are refused. The generic system preamble names no
+world capability and is recorded before the first model call.
+
+`uv run ols run experiments/scripted-discovery.json` exercises all four tools
+without a model. `experiments/discovery-check.json` is the bounded local-model
+acceptance check; its initial prompt contains no tool names. The real-model
+sequence passed with recorded argument repairs. The final check explicitly guides
+argument structure, and earlier failed trials are retained. This does not establish reliable autonomous
+tool use. See the Builder's `docs/experiments/2026-11-14-discovery-meta-tools.md`.
 
 `uv run ols run experiments/scripted-workspace.json` performs a short scripted
 file-writing check with the shipped capabilities. Its real archive and text
@@ -59,8 +75,7 @@ What does **not** exist yet:
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
   window is whatever the server uses by default.
-- No capability discovery (capabilities are presented to the model directly
-  as tools), memory, checkpoints, crash recovery, resource
+- No memory, checkpoints, crash recovery, resource
   limits beyond the deadline and step count, or container isolation.
   Configurations that ask for any of these are refused, not approximated.
 - Isolation is the *process tier*: an architectural boundary for capabilities

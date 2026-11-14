@@ -12,7 +12,7 @@
   "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
   "world": {
     "world_id": "minimal",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "orchestrator": {
     "provider_id": "scripted",
@@ -36,10 +36,13 @@
           "text": "Writing a workspace file for the artifact view engineering check.",
           "tool_calls": [
             {
-              "capability_id": "workspace.write",
+              "capability_id": "capabilities.invoke",
               "arguments": {
-                "path": "notes/laboratory.txt",
-                "text": "Open Laboratory workspace check.\nWritten by the shipped workspace.write capability.\n"
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "notes/laboratory.txt",
+                  "text": "Open Laboratory workspace check.\nWritten by the shipped workspace.write capability.\n"
+                }
               }
             }
           ]
@@ -48,14 +51,20 @@
           "text": "Listing the directory.",
           "tool_calls": [
             {
-              "capability_id": "workspace.list",
+              "capability_id": "capabilities.invoke",
               "arguments": {
-                "path": "notes"
+                "id": "workspace.list",
+                "arguments": {
+                  "path": "notes"
+                }
               }
             },
             {
-              "capability_id": "time.now",
-              "arguments": {}
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "time.now",
+                "arguments": {}
+              }
             }
           ]
         }

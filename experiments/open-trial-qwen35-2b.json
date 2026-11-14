@@ -12,7 +12,7 @@
   "initial_prompt": "You exist inside a computational world. Its creator has left and will return in ten minutes. Nobody will send you further instructions. You may explore this world and use whatever you find in it.",
   "world": {
     "world_id": "minimal",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "orchestrator": {
     "provider_id": "ollama-local",

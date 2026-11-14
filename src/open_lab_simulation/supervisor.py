@@ -27,6 +27,7 @@ from .model import SCRIPTED_MODEL_ID, is_loopback
 from .paths import data_root, minimal_environment
 from .proctree import ProcessTree
 from .recorder import Recorder, RecordError, utc_now
+from .registry import Registry, RegistryError
 from .world import World, WorldError, compute_content_digest, load_world
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
@@ -73,6 +74,10 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
     if continuation_message(config, world) is None:
         return ("the world's contracts predate the continuation message (observation-event "
                 "1.1.0, experiment-config 1.1.0); rebuild the world with current contracts")
+    kinds = world.contracts.schemas["observation-event"]["allOf"]
+    if not any("preamble" in rule.get("then", {}).get("properties", {}).get("payload", {}).get(
+        "properties", {}).get("kind", {}).get("enum", []) for rule in kinds):
+        return "the world's contracts cannot record the discovery preamble; rebuild the world"
     if config["permissions"].get("subprocess") or config.get("capabilities", {}).get(
         "agent_created_tools"
     ):
@@ -182,6 +187,10 @@ def _prepare(
     reason = _unsupported(config, world)
     if reason:
         raise LaunchError(f"not supported by this runtime: {reason}")
+    try:
+        Registry(world.directory, world.capabilities)
+    except RegistryError as error:
+        raise LaunchError(str(error)) from None
     return raw, config, world, _resolve_model(config, world)
 
 
@@ -376,7 +385,14 @@ def _supervise(
             return refuse(f"invalid {kind} event: {error}")
         last_seq = event["seq"]
         if kind == "tool.call":
-            open_calls[event["correlation_id"]] = event["payload"]["capability_id"]
+            payload = event["payload"]
+            target = payload["capability_id"]
+            if target in ("capabilities.invoke", "capabilities.demonstrate"):
+                candidate = payload.get("arguments", {}).get("id")
+                if (isinstance(candidate, str) and _SLUG.fullmatch(candidate)
+                        and len(candidate) <= 128):
+                    target = candidate
+            open_calls[event["correlation_id"]] = target
         elif kind == "tool.result":
             # The runtime is waiting for the acknowledgement, so whatever changed
             # in the workspace since the last scan happened during this call.

@@ -22,6 +22,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from .paths import minimal_environment
+from .registry import META_SCHEMAS, Registry
 
 DEFAULT_TIMEOUT_S = 30
 _RUNNER = Path(__file__).with_name("_capability_runner.py")
@@ -68,6 +69,7 @@ class ToolHost:
         actor: dict[str, Any],
         allow: list[str] | None = None,
         deny: list[str] | None = None,
+        registry: Registry | None = None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -77,6 +79,7 @@ class ToolHost:
         self.allow = None if allow is None else set(allow)
         self.deny = set(deny or [])
         self._calls = 0
+        self.registry = registry
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -102,7 +105,8 @@ class ToolHost:
         })
 
         started = time.monotonic()
-        outcome = self._run(capability_id, arguments)
+        outcome = (self._discovery(capability_id, arguments) if self.registry is not None
+                   else self._run(capability_id, arguments))
         outcome["duration_ms"] = int((time.monotonic() - started) * 1000)
         self.emit({
             "recorder": "tool_host", "type": "tool.result", "actor": {"kind": "system"},
@@ -110,16 +114,59 @@ class ToolHost:
         })
         return {key: value for key, value in outcome.items() if key != "duration_ms"}
 
+    def _unavailable(self, capability_id: str) -> str | None:
+        if capability_id in self.deny or (self.allow is not None
+                                          and capability_id not in self.allow):
+            return "not available in this experiment"
+        needed = self.capabilities[capability_id][1]["permissions"]
+        shortfall = permission_shortfall(needed, self.permissions)
+        return f"needs permission not granted: {shortfall}" if shortfall else None
+
+    def _discovery(self, name: str, arguments: dict) -> dict:
+        if name not in META_SCHEMAS:
+            return {"status": "error", "error": f"unknown discovery tool '{name}'"}
+        problem = _first_error(META_SCHEMAS[name], arguments)
+        if problem:
+            return {"status": "error", "error": f"invalid_input: {problem}"}
+        if name == "capabilities.search":
+            available = {ident for ident in self.capabilities if not self._unavailable(ident)}
+            return {"status": "ok", "result": {"matches": self.registry.search(
+                arguments["query"], available, arguments.get("category"))}}
+        ident = arguments["id"]
+        if ident not in self.capabilities:
+            return {"status": "error", "error": f"unknown capability '{ident}'"}
+        denied = self._unavailable(ident)
+        if denied:
+            return {"status": "denied", "error": denied}
+        manifest = self.capabilities[ident][1]
+        if name == "capabilities.describe":
+            return {"status": "ok", "result": {"id": ident,
+                    "documentation": self.registry.describe(self.registry.entries[ident]),
+                    "input_schema": manifest["input_schema"],
+                    "example_call": {"tool": "capabilities.invoke", "arguments": {
+                        "id": ident, "arguments": manifest["demonstrations"][0]["input"]}}}}
+        if name == "capabilities.invoke":
+            return self._run(ident, arguments["arguments"])
+        demos = manifest["demonstrations"]
+        demo_id = arguments.get("demo_id", demos[0]["id"])
+        demo = next((d for d in demos if d["id"] == demo_id), None)
+        if demo is None:
+            return {"status": "error", "error": f"unknown demonstration '{demo_id}'"}
+        outcome = self._run(ident, demo["input"])
+        result = {"id": ident, "demo_id": demo_id, "input": demo["input"], "outcome": outcome}
+        if "expected_output" in demo:
+            result["expected_output"] = demo["expected_output"]
+            result["matches_expected"] = (outcome.get("status") == "ok"
+                                           and outcome.get("result") == demo["expected_output"])
+        return {"status": "ok", "result": result}
+
     def _run(self, capability_id: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if capability_id not in self.capabilities:
             return {"status": "error", "error": f"unknown capability '{capability_id}'"}
         directory, manifest = self.capabilities[capability_id]
-        if capability_id in self.deny or (self.allow is not None
-                                           and capability_id not in self.allow):
-            return {"status": "denied", "error": "not available in this experiment"}
-        shortfall = permission_shortfall(manifest["permissions"], self.permissions)
-        if shortfall:
-            return {"status": "denied", "error": f"needs permission not granted: {shortfall}"}
+        denied = self._unavailable(capability_id)
+        if denied:
+            return {"status": "denied", "error": denied}
         problem = _first_error(manifest["input_schema"], arguments)
         if problem:
             return {"status": "error", "error": f"invalid_input: {problem}"}
