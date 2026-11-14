@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, container, gateway, ollama, recovery, resources
+from . import __version__, container, gateway, ollama, policies, recovery, resources
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -263,7 +263,16 @@ def _prepare(
     except RegistryError as error:
         raise LaunchError(str(error)) from None
     isolation = _isolation(config, world)
-    return raw, config, world, _resolve_model(config, world), isolation
+    model = _resolve_model(config, world)
+    try:
+        model["runtime_policy"] = policies.resolve(
+            config, continuation_message(config, world), model.get("context_tokens"),
+        )
+    except ValueError as error:
+        raise LaunchError(str(error)) from None
+    if "settings" in model:
+        model["settings"]["context_guard_tokens"] = model["runtime_policy"]["context_guard_tokens"]
+    return raw, config, world, model, isolation
 
 
 def _new_run_id() -> str:
@@ -354,13 +363,22 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
     if model["real_model"] and not model.get("identity", {}).get("digest"):
         raise LaunchError("resuming requires an attestable model digest")
-    if prior_model.get("adapter") and model != prior_model:
+    comparable = dict(model)
+    if "runtime_policy" not in prior_model:
+        comparable.pop("runtime_policy", None)
+    if prior_model.get("adapter") and comparable != prior_model:
         raise LaunchError("resuming requires the original model digest, catalog and settings")
     if model.get("identity", {}).get("digest") != prior_model.get("identity", {}).get(
         "digest"
     ):
         raise LaunchError("resuming requires the original model digest")
     metadata, state, rejected = latest_checkpoint(archive, events, world.contracts)
+    if state.get("policy_sha256"):
+        if state["policy_sha256"] != policies.digest(model["runtime_policy"]):
+            raise LaunchError("checkpoint runtime policy differs")
+        policies.validate_state(state.get("policy_state"), model["runtime_policy"])
+    elif model["runtime_policy"]["id"] != policies.LEGACY:
+        raise LaunchError("quiet policy needs checkpoint scheduling state")
     if (
         metadata["extensions"]["world_digest"] != world.digest
         or metadata["orchestrator_model_id"] != model["model_id"]
@@ -534,6 +552,9 @@ def _run_prepared(
                 gateway.canonical_json(model["catalog"]["document"]),
                 encoding="utf-8", newline="\n",
             )
+        (archive / "policy.json").write_text(
+            gateway.canonical_json(model["runtime_policy"]), encoding="utf-8", newline="\n",
+        )
         described = {key: value for key, value in model.items() if key != "replies"}
         (archive / "model.json").write_text(
             json.dumps(described, indent=2) + "\n", encoding="utf-8", newline="\n"
@@ -566,10 +587,11 @@ def _run_prepared(
             type="run.state_changed",
             actor=system if by == "experiment_manager" else supervisor,
             payload={"from": state, "to": to, "reason": reason,
-                     **({"extensions": {"stage": "model_provenance",
-                                         "model_sha256": gateway.sha256_text(
-                                             gateway.canonical_json(model))}}
-                        if to == "starting" and model.get("adapter") else {})},
+                     **({"extensions": {
+                         "policy_sha256": policies.digest(model["runtime_policy"]),
+                         **({"stage": "model_provenance", "model_sha256": gateway.sha256_text(
+                             gateway.canonical_json(model))} if model.get("adapter") else {}),
+                     }} if to == "starting" else {})},
         )
         state = to
 
@@ -610,6 +632,8 @@ def _run_prepared(
                     "snapshot_event_seq": resume["metadata"]["last_event_seq"],
                     "rejected_checkpoints": resume["rejected"],
                     "elapsed_s": elapsed_offset,
+                    "runtime_policy": model["runtime_policy"],
+                    "policy_sha256": policies.digest(model["runtime_policy"]),
                 },
             },
         )
@@ -711,7 +735,8 @@ def _run_prepared(
             accounting=accounting,
             health=(recovery.HealthMonitor(model, recovery.policy(config))
                     if accounting and model["real_model"] else None),
-            controller=controller,
+            controller=controller, runtime_policy=model["runtime_policy"],
+            restored_policy=resume is not None,
         )
         if final == "terminated":
             change("stopping", reason)
@@ -843,6 +868,8 @@ def _supervise(
     accounting=None,
     health=None,
     controller=None,
+    runtime_policy=None,
+    restored_policy=False,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -866,6 +893,7 @@ def _supervise(
     last_seq: int | None = None
     next_checkpoint = time.monotonic()
     pause_requested = False
+    idle_recorded = False
     stop_sent = False
     last_denial = None
 
@@ -898,6 +926,7 @@ def _supervise(
 
     def handle(line: bytes, *, stopped: bool = False) -> None:
         nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
+        nonlocal idle_recorded
         last_seq = None
         last_denial = None
         try:
@@ -913,17 +942,36 @@ def _supervise(
             runtime = message["state"]
             fields = ("steps", "script_cursor", "call_count", "tokens_used")
             if (
-                checkpointing is None
+                (checkpointing is None and (runtime_policy is None
+                 or runtime_policy["id"] != policies.QUIET))
                 or open_calls
                 or not isinstance(runtime.get("messages"), list)
                 or any(not isinstance(runtime.get(k), int) or runtime[k] < 0 for k in fields)
             ):
                 return refuse("invalid checkpoint state barrier")
+            if runtime_policy:
+                try:
+                    if runtime.get("policy_sha256") != policies.digest(runtime_policy):
+                        raise ValueError("runtime policy digest differs")
+                    policies.validate_state(runtime.get("policy_state"), runtime_policy)
+                except ValueError as error:
+                    return refuse(str(error))
+                if runtime["policy_state"]["idle"] and not idle_recorded:
+                    recorder.record(
+                        recorder="supervisor", type="supervisor.action", actor=supervisor,
+                        payload={"action": "limit_enforced", "detail": "quiet reply budget reached",
+                                 "extensions": {"stage": "runtime_idle", "wake": "none",
+                                                "restored": restored_policy,
+                                                "policy_state": runtime["policy_state"]}},
+                    )
+                    idle_recorded = True
             stop_sent = deadline_requested or pause_requested or (
                 pause_after_steps is not None and runtime["steps"] >= pause_after_steps
             )
             now = time.monotonic()
-            if stop_sent or message.get("final") or now >= next_checkpoint:
+            if checkpointing is not None and (
+                stop_sent or message.get("final") or now >= next_checkpoint
+            ):
                 reason = (
                     "pre_shutdown"
                     if deadline_requested
@@ -941,6 +989,25 @@ def _supervise(
                     request_deadline()
                 deadline_checkpointed = deadline_requested
                 next_checkpoint = time.monotonic() + checkpointing.get("interval_s", 60)
+            return None
+        if isinstance(message, dict) and isinstance(message.get("model_input"), dict):
+            if stopped:
+                return None
+            payload = message["model_input"]
+            body = payload.get("request")
+            if (open_calls or not isinstance(body, dict)
+                    or not isinstance(body.get("messages"), list)
+                    or not isinstance(payload.get("context"), dict)):
+                return refuse("invalid model input request")
+            event = recorder.record(
+                recorder="supervisor", type="supervisor.action", actor=supervisor,
+                payload={"action": "limit_enforced",
+                         "detail": "context policy prepared model input",
+                         "extensions": {"stage": "model_input", **payload,
+                                        "policy_sha256": policies.digest(runtime_policy)}},
+            )
+            recorder.sync()
+            last_seq = event["seq"]
             return None
         if isinstance(message, dict) and isinstance(message.get("end"), dict):
             ended = message["end"]

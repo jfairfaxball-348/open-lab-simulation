@@ -232,6 +232,42 @@ and works:
 - `ols verify <archive>` — checks an archive is complete and untampered using
   only what is inside it.
 
+**S007c runtime policies are implemented.** The optional
+`extensions.runtime_policy` selects `legacy-immediate-v1` (default) or
+`quiet-until-deadline-v1`. Quiet stops model calls after a configured consecutive
+tool-free reply threshold (default 1, maximum 16); below it, the fixed recorded
+continuation permits bounded reflection opportunities. At the threshold no new
+text is appended and no automatic wake occurs. Waiting uses the remaining active
+wall-clock budget. Pause/resume and recovery preserve the idle latch and counters;
+step ceilings still stop immediately. Prose never controls scheduling authority.
+
+`policy.json` freezes resolved policy/defaults and the experiment digest, bound
+to the launch log. Context uses version `oldest-tools-turns-v1`, explicit memory
+uses `explicit-tools-v1` and turn semantics use `user-continuation-v1`; unknown
+versions/fields/semantics are refused. `context_guard_tokens` sizes the existing
+client guard and never promises server context. Initial prompt, preamble and
+newest assistant/tool group survive; protected overflow is reported. Memory notes
+are not automatically inserted, retrieved or summarised.
+
+Before each HTTP attempt a supervisor `model_input` action records the complete
+request (messages, tools, requested settings) and context mutations, then
+acknowledges it before the worker contacts the server. Retries and failed calls
+retain inputs. Scripted runs record their ignored input separately. Scheduling
+barriers preserve checkpoint safety while idle; they do not poll inference.
+Raw request snapshots can grow archives significantly; long-run overhead is
+unverified. Historical archives keep their original records; new recovery
+segments record their legacy interpretation explicitly.
+
+```bash
+uv run ols run experiments/s007c-legacy.json
+uv run ols run experiments/s007c-quiet.json --pause-after-steps 1
+uv run ols resume <archive printed above>
+```
+
+These are directed engineering pilots with an installed model. They do not
+run S007d or establish neutrality/autonomy. See Builder
+`docs/architecture/RUNTIME_POLICIES.md` and its S007c engineering report.
+
 **S007a local gateway is implemented.** Optional
 `extensions.model_catalog` selects one approved model-provider document outside
 the world. It contains `document` and `sha256`: the SHA-256 of the document's
@@ -366,6 +402,7 @@ src/open_lab_simulation/
   ownership.py    OS writer guard and verified process birth identities
   worker.py       agent runtime (the child process) and the agent loop
   toolhost.py     capability invocation, permissions, tool.call / tool.result
+  policies.py     versioned continuation/context/memory treatment and state validation
   model.py        model client interface, scripted stand-in, chat model client
   ollama.py       model identity and measurement through Ollama's own API
   recorder.py     the single writer of the event log

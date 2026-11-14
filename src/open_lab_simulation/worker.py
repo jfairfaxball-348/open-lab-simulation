@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import policies
 from .container import Backend
 from .model import ModelClient, ModelError, OpenAIChatModel, ScriptedModel
 from .registry import META_TOOLS, PREAMBLE, Registry
@@ -51,6 +52,12 @@ class Channel:
         seq = acknowledgement.get("seq")
         return seq if isinstance(seq, int) else None
 
+    def model_input(self, payload):
+        self._out.write(json.dumps({"model_input": payload}) + "\n")
+        self._out.flush()
+        if not isinstance(self.read().get("seq"), int):
+            raise ModelError("model input was not acknowledged; request not sent")
+
     def end(self, reason: str, steps: int) -> None:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
         self._out.flush()
@@ -77,6 +84,8 @@ def run_loop(
     runtime_state: dict | None = None,
     checkpoint=None,
     reserve_step=None,
+    policy=None,
+    record_input=None,
 ) -> tuple[str, int]:
     """The agent loop. Returns why it ended and how many steps it took.
 
@@ -101,6 +110,10 @@ def run_loop(
     )
     steps = runtime_state["steps"] if runtime_state else 0
     tokens_used = runtime_state["tokens_used"] if runtime_state else 0
+    policy = policy or {"id": policies.LEGACY}
+    scheduling = dict(runtime_state.get("policy_state", {})) if runtime_state else {}
+    if not scheduling:
+        scheduling = {"tool_free_replies": 0, "idle": False}
 
     def save(final=False):
         return checkpoint and checkpoint(
@@ -110,6 +123,7 @@ def run_loop(
                 "script_cursor": getattr(model, "position", steps),
                 "call_count": host._calls,
                 "tokens_used": tokens_used,
+                "policy_sha256": policies.digest(policy), "policy_state": scheduling,
             },
             final,
         )
@@ -117,10 +131,19 @@ def run_loop(
     if save():
         return "operator_pause", steps
     while max_steps is None or steps < max_steps:
+        if scheduling["idle"]:
+            # No inference or injected text; the supervisor retains deadline authority.
+            time.sleep(0.25)
+            if save():
+                return "operator_pause", steps
+            continue
         if reserve_step:
             reserve_step()
         started = time.monotonic()
         try:
+            if record_input and not getattr(model, "records_inputs", False):
+                record_input({"request": {"messages": messages}, "backend": "scripted",
+                              "attempt": 1, "context": {"applied": False}})
             reply = model.chat(messages)
         except ModelError as error:
             emit(
@@ -183,7 +206,12 @@ def run_loop(
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}
             )
-        if not reply.tool_calls:
+        scheduling["tool_free_replies"] = (
+            0 if reply.tool_calls else scheduling["tool_free_replies"] + 1
+        )
+        scheduling["idle"] = (policy["id"] == policies.QUIET and
+                              scheduling["tool_free_replies"] >= policy["max_tool_free_replies"])
+        if not reply.tool_calls and not scheduling["idle"]:
             payload: dict[str, Any] = {"kind": "continuation", "text": continuation}
             if output_seq is not None:
                 payload["after_seq"] = output_seq
@@ -225,7 +253,8 @@ def main() -> int:
             chosen["provider_ref"],
             META_TOOLS,
             chosen.get("sampling"),
-            chosen.get("context_tokens"),
+            chosen["runtime_policy"]["context_guard_tokens"],
+            record_input=channel.model_input,
         )
     actor = spec["actor"]
     isolation = spec.get("isolation", {"tier": "process"})
@@ -255,8 +284,10 @@ def main() -> int:
         actor,
         spec["continuation_message"],
         runtime_state=spec.get("runtime_state"),
-        checkpoint=channel.state if spec.get("checkpointing") is not None else None,
+        checkpoint=(channel.state if spec.get("checkpointing") is not None
+                    or chosen["runtime_policy"]["id"] == policies.QUIET else None),
         reserve_step=channel.reserve_step if spec.get("reserve_steps") else None,
+        policy=chosen["runtime_policy"], record_input=channel.model_input,
     )
     channel.end(reason, steps)
     return 0

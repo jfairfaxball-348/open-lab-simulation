@@ -1,0 +1,56 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.0.0",
+  "experiment_id": "s007c-quiet",
+  "title": "S007c directed scheduling pilot",
+  "research_question": "Engineering only: verify recorded policy, exact model input and idle scheduling.",
+  "created_at": "2026-11-14T00:00:00Z",
+  "tags": [
+    "engineering-check",
+    "tool-use"
+  ],
+  "initial_prompt": "For this engineering check, reply with one short sentence without making tool calls.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.6.0",
+    "content_digest": "1ccc407cc300e7622bcca348ff22c5982bff5cf3a10559ee741304350e960da5"
+  },
+  "orchestrator": {
+    "provider_id": "ollama-local",
+    "model_id": "orchestrator-small",
+    "sampling": {
+      "temperature": 0,
+      "seed": 903,
+      "max_output_tokens": 128
+    }
+  },
+  "limits": {
+    "wall_clock_s": 20,
+    "max_steps": 2
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "loopback",
+    "models": [
+      "orchestrator-small"
+    ],
+    "gpu": false
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "checkpointing": {
+    "interval_s": 2,
+    "keep_last": 8
+  },
+  "extensions": {
+    "runtime_policy": {
+      "id": "quiet-until-deadline-v1",
+      "context_guard_tokens": 4096,
+      "context_policy": "oldest-tools-turns-v1",
+      "memory_policy": "explicit-tools-v1",
+      "turn_semantics": "user-continuation-v1",
+      "max_tool_free_replies": 1
+    }
+  }
+}

@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
+from .contracts import canonical_json, sha256_text
+
 SCRIPTED_MODEL_ID = "scripted"
 REQUEST_TIMEOUT_S = 600
 # Rough but safe for English and JSON: real tokenisers average more characters per token.
@@ -295,10 +297,13 @@ class OpenAIChatModel:
         manifests: list[dict[str, Any]],
         sampling: dict[str, Any] | None = None,
         context_tokens: int | None = None,
+        record_input=None,
     ):
         if not is_loopback(base_url):
             raise ModelError("only a model server on this machine may be used")
         self.model_id = model_id
+        self.records_inputs = True
+        self._record_input = record_input
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._provider_ref = provider_ref
         self._tools, self._names = tool_definitions(manifests)
@@ -320,6 +325,7 @@ class OpenAIChatModel:
 
     def chat(self, messages: list[dict[str, Any]]) -> ModelReply | None:
         details: dict[str, Any] = {}
+        before = sha256_text(canonical_json(messages))
         truncated, dropped = fit_context(
             messages, len(json.dumps(self._tools)), self._budget_chars
         )
@@ -337,9 +343,20 @@ class OpenAIChatModel:
             if ours in self._sampling:
                 body[theirs] = self._sampling[ours]
 
+        context = {
+            "policy": "oldest-tools-turns-v1", "before_sha256": before,
+            "after_sha256": sha256_text(canonical_json(messages)),
+            "budget_chars": self._budget_chars,
+            "truncated_tool_results": truncated, "dropped_messages": dropped,
+            "protected_overflow": (len(json.dumps(self._tools)) + sum(
+                len(json.dumps(m)) for m in messages)) > self._budget_chars,
+        }
         last_error = "no reply"
         for attempt in range(2):
             try:
+                if self._record_input:
+                    self._record_input({"request": body, "context": context,
+                                        "attempt": attempt + 1, "backend": "local-chat"})
                 reply = self._post(body)
                 message = reply["choices"][0]["message"]
                 if not isinstance(message, dict):

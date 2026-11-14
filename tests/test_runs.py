@@ -101,7 +101,8 @@ def test_run_past_its_deadline_is_terminated_by_the_supervisor(root, make_config
     assert time.monotonic() - started < 20
     assert (result.state, result.reason) == ("terminated", "deadline")
     events = events_of(result.archive)
-    action = next(e for e in events if e["type"] == "supervisor.action")
+    action = next(e for e in events if e["type"] == "supervisor.action"
+                  and e["payload"]["action"] == "terminated")
     assert action["recorder"] == "supervisor"
     assert action["payload"] == {"action": "terminated", "detail": "wall_clock_s limit reached"}
     states = [e["payload"]["to"] for e in events if e["type"] == "run.state_changed"]
@@ -132,9 +133,10 @@ def test_step_limit_ends_the_run(root, make_config):
     assert (result.state, result.reason) == ("terminated", "max_steps")
     events = events_of(result.archive)
     assert types(events).count("agent.output") == 2
-    assert [e["payload"]["action"] for e in events if e["type"] == "supervisor.action"] == [
-        "limit_enforced"
-    ]
+    actions = [e["payload"] for e in events if e["type"] == "supervisor.action"]
+    assert [a["action"] for a in actions] == ["limit_enforced"] * 3
+    assert [a.get("extensions", {}).get("stage") for a in actions[:2]] == ["model_input"] * 2
+    assert actions[-1]["detail"] == "max_steps limit reached"
 
 
 # --- artifacts -----------------------------------------------------------------

@@ -217,12 +217,16 @@ def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
     sequence = [e["type"] for e in events
                 if e["type"] not in ("run.state_changed", "resource.sample")]
     assert sequence == [
-        "environment.message",                                    # generic system preamble
-        "model.call", "agent.output", "environment.message",       # no tool call: continue
-        "model.call", "agent.output", "tool.call", "tool.result",  # the model acts again
-        "model.call", "agent.output", "environment.message",       # "Nothing more.": continue
-        "supervisor.action",                                       # ended by the step limit
+        "environment.message",  # generic system preamble
+        "supervisor.action", "model.call", "agent.output", "environment.message",
+        "supervisor.action", "model.call", "agent.output", "tool.call", "tool.result",
+        "supervisor.action", "model.call", "agent.output", "environment.message",
+        "supervisor.action",  # ended by the step limit
     ]
+    inputs = [e for e in events if e["type"] == "supervisor.action"
+              and e["payload"].get("extensions", {}).get("stage") == "model_input"]
+    assert len(inputs) == 3
+    assert [e["payload"]["extensions"]["request"] for e in inputs] == server.requests
     messages = [e for e in events if e["type"] == "environment.message"
                 and e["payload"]["kind"] == "continuation"]
     for message in messages:
@@ -568,6 +572,8 @@ def test_scripted_runs_never_contact_a_model_server(model_root, make_config, ser
         call("text.stats", text="a")]}]), model_root)
     assert result.state == "completed" and server.requests == []
     stored = json.loads((result.archive / "model.json").read_text(encoding="utf-8"))
+    policy = stored.pop("runtime_policy")
+    assert policy["id"] == "legacy-immediate-v1"
     assert stored == {"kind": "scripted", "model_id": "scripted", "real_model": False}
 
 

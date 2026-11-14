@@ -148,7 +148,10 @@ def test_grace_mode_finishes_normally_before_deadline(root, make_config):
     ), root)
     assert result.state == "completed"
     assert metadata(result)[1]["reason"] == "pre_shutdown"
-    assert not any(e["type"] == "supervisor.action" for e in events_of(result.archive))
+    actions = [e["payload"] for e in events_of(result.archive)
+               if e["type"] == "supervisor.action"]
+    assert actions and all(a.get("extensions", {}).get("stage") == "model_input"
+                           for a in actions)
     assert verify_archive(result.archive) == []
 
 

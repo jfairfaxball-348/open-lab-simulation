@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from . import policies
 from .artifacts import read_index
 from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
 from .contracts import Contracts, canonical_json, sha256_text, validate_event_stream
@@ -44,6 +45,39 @@ def verify_archive(
         return [*problems, "the event log is empty"]
 
     events = [json.loads(line) for line in lines]
+    policy = None
+    policy_pins = [e["payload"].get("extensions", {}).get("policy_sha256") for e in events
+                   if e["type"] == "run.state_changed" and e["payload"].get("to") == "starting"]
+    if any(policy_pins):
+        try:
+            policy = json.loads((archive / "policy.json").read_text(encoding="utf-8"))
+            model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
+            if policy_pins != [policies.digest(policy)]:
+                problems.append("runtime policy differs from its launch digest")
+            if policy.get("experiment_sha256") != policies.digest(config):
+                problems.append("experiment differs from frozen runtime policy")
+            if model.get("runtime_policy") != policy:
+                problems.append("model and runtime policy differ")
+        except (OSError, ValueError, TypeError):
+            problems.append("runtime policy is missing or unreadable")
+    for event in events:
+        ext = event["payload"].get("extensions", {})
+        if event["type"] == "recovery" and "runtime_policy" in ext:
+            restored = ext["runtime_policy"]
+            if (ext.get("policy_sha256") != policies.digest(restored)
+                    or restored.get("experiment_sha256") != policies.digest(config)
+                    or (policy is not None and policy != restored)):
+                problems.append("recovery runtime policy differs")
+            if policy is None:
+                policy = restored
+        if ext.get("stage") == "model_input" and policy is not None:
+            if ext.get("policy_sha256") != policies.digest(policy):
+                problems.append("model input policy differs")
+            context = ext.get("context", {})
+            if "after_sha256" in context and context["after_sha256"] != policies.digest(
+                ext.get("request", {}).get("messages")
+            ):
+                problems.append("model input context digest differs")
     pins = [e["payload"].get("extensions", {}).get("model_sha256") for e in events
             if e["type"] == "run.state_changed"
             and e["payload"].get("extensions", {}).get("stage") == "model_provenance"]
@@ -98,7 +132,14 @@ def verify_archive(
             if ident in pruned:
                 continue
             try:
-                metadata, _ = read_checkpoint(archive, event, events, contracts)
+                metadata, runtime = read_checkpoint(archive, event, events, contracts)
+                if policy and runtime.get("policy_sha256"):
+                    if runtime["policy_sha256"] != policies.digest(policy):
+                        problems.append(f"{ident}: checkpoint policy differs")
+                    try:
+                        policies.validate_state(runtime.get("policy_state"), policy)
+                    except ValueError as error:
+                        problems.append(f"{ident}: {error}")
                 if metadata["extensions"]["world_digest"] != world["content_digest"]["value"]:
                     problems.append(f"{ident}: checkpoint world differs")
             except CheckpointError as error:
