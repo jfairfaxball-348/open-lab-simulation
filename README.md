@@ -237,8 +237,15 @@ with 24 source-bound reviews. A completed the full guided task in 0/6 runs;
 B/C each had 0/6 qualifiers. Real partial tool use and two exposed fault-response
 examples are retained; they do not open expansion. See Builder
 `docs/experiments/2026-11-14-autonomy-baseline.md` and
-`docs/experiments/results/S007d-001.json`. Next is S007h, one bounded registered
-change and re-evaluation. No later campaign or improvement is implemented.
+`docs/experiments/results/S007d-001.json`.
+
+**S007h-001 is complete: NO_GO.** The same frozen design with one change, the
+installed `qwen3:4b` as orchestrator (`campaigns/s007h-001.json`; runtime source
+unchanged). 24/24 cells verified and reviewed; every cell reached the 600 s
+deadline after 7-21 calls; 0/6 guided and 0/6 B/C qualifiers; seven successful
+invocations and zero repairs. See Builder
+`docs/experiments/2026-11-14-model-swap-reevaluation.md`. The next route is a
+registered decision (OD-9); no further campaign or improvement is implemented.
 
 **S007d benchmark tooling is implemented.**
 `python -m open_lab_simulation.benchmark run <manifest> --registration <commit>`
