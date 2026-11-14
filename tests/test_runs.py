@@ -388,3 +388,16 @@ def test_cli_reports_a_refusal(root, make_config, capsys):
     config = make_config([], world={"version": "9.9.9"})
     assert main(["run", str(config), "--data-root", str(root)]) == 2
     assert "nothing was created" in capsys.readouterr().err
+
+
+def test_world_whose_contracts_predate_the_continuation_is_refused(root, release, make_config):
+    # A run must never fall back to ending at the first reply without a tool call,
+    # and with 1.0.0 contracts the continuation could not be recorded.
+    from conftest import restamp
+    path = release / "contracts" / "v1" / "observation-event.schema.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    schema["properties"]["type"]["enum"].remove("environment.message")
+    schema["x-schema-version"] = "1.0.0"
+    path.write_text(json.dumps(schema, indent=2), encoding="utf-8", newline="\n")
+    restamp(release, lambda manifest: manifest["contracts"].update({"observation-event": "1.0.0"}))
+    assert "predate the continuation message" in refused(make_config([]), root)

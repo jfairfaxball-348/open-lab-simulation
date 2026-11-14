@@ -38,6 +38,8 @@ _SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 _RUNTIME_EVENTS = {
     "model.call": {"model_gateway"},
     "agent.output": {"agent_runtime"},
+    # The continuation message: what the runtime itself said to the model.
+    "environment.message": {"agent_runtime"},
     "tool.call": {"tool_host"},
     "tool.result": {"tool_host"},
     "error": {"agent_runtime", "tool_host"},
@@ -68,6 +70,9 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
         return "checkpointing is not implemented; use termination.on_deadline 'hard_stop'"
     if "notify_agent_before_s" in config["termination"]:
         return "deadline notices are not implemented"
+    if continuation_message(config, world) is None:
+        return ("the world's contracts predate the continuation message (observation-event "
+                "1.1.0, experiment-config 1.1.0); rebuild the world with current contracts")
     if config["permissions"].get("subprocess") or config.get("capabilities", {}).get(
         "agent_created_tools"
     ):
@@ -77,6 +82,25 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
     if world.manifest["environment"]["isolation"]["minimum_tier"] != "process":
         return "the world needs the container isolation tier, which is not available"
     return None
+
+
+def continuation_message(config: dict[str, Any], world: World) -> str | None:
+    """The text given to the model when it replies without calling a tool.
+
+    The experiment's own text, or the default stated in the world's bundled
+    experiment-config schema, so the Simulation holds no second copy of it.
+    ``None`` if the world's contracts cannot express or record a continuation.
+    """
+    try:
+        events = world.contracts.schemas["observation-event"]
+        if "environment.message" not in events["properties"]["type"]["enum"]:
+            return None
+        default = world.contracts.schemas["experiment-config"]["properties"]["continuation"][
+            "properties"]["message"]["default"]
+    except KeyError:
+        return None
+    message = config.get("continuation", {}).get("message", default)
+    return message if isinstance(message, str) and message else None
 
 
 def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
@@ -224,6 +248,7 @@ def run_experiment(config_path: Path, root: Path | None = None) -> RunResult:
             "workspace": str(workspace),
             "capabilities": world.manifest["capabilities"],
             "initial_prompt": config["initial_prompt"],
+            "continuation_message": continuation_message(config, world),
             "max_steps": config["limits"].get("max_steps"),
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
@@ -314,6 +339,7 @@ def _supervise(
     deadline = time.monotonic() + wall_clock_s
     open_calls: dict[str, str] = {}  # correlation id -> capability id
     ended: dict[str, Any] | None = None
+    last_seq: int | None = None
 
     def refuse(message: str) -> None:
         recorder.record(
@@ -323,7 +349,8 @@ def _supervise(
         )
 
     def handle(line: bytes) -> None:
-        nonlocal ended
+        nonlocal ended, last_seq
+        last_seq = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
@@ -347,6 +374,7 @@ def _supervise(
             )
         except RecordError as error:
             return refuse(f"invalid {kind} event: {error}")
+        last_seq = event["seq"]
         if kind == "tool.call":
             open_calls[event["correlation_id"]] = event["payload"]["capability_id"]
         elif kind == "tool.result":
@@ -362,7 +390,7 @@ def _supervise(
 
     def acknowledge() -> None:
         try:
-            process.stdin.write(b'{"ack":true}\n')
+            process.stdin.write((json.dumps({"ack": True, "seq": last_seq}) + "\n").encode())
             process.stdin.flush()
         except OSError:
             pass  # the runtime has already gone; its exit is handled below
@@ -397,8 +425,6 @@ def _supervise(
         return "terminated", "max_steps"
     if ended.get("reason") == "model_error":
         return "failed", "the model server could not produce a reply"
-    if ended.get("reason") == "no_tool_calls":
-        return "completed", "the model made no tool call"
     return "completed", "the agent loop ended by itself"
 
 

@@ -3,7 +3,7 @@
   "$id": "urn:open-lab:schema:observation-event:v1",
   "title": "Observation event",
   "description": "One line of a run's append-only event log. Written only by privileged infrastructure outside the agent's writable environment; the agent can never author, edit or delete an event. Events record what was observably done or said, never inferred mental states.",
-  "x-schema-version": "1.0.0",
+  "x-schema-version": "1.1.0",
   "type": "object",
   "required": [
     "schema",
@@ -56,6 +56,7 @@
         "run.state_changed",
         "agent.output",
         "agent.statement",
+        "environment.message",
         "model.call",
         "tool.call",
         "tool.result",
@@ -145,6 +146,30 @@
               "text": { "type": "string" },
               "source_seq": {
                 "description": "The agent.output or tool.call event in which the statement appeared.",
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "environment.message" } } },
+      "then": {
+        "properties": {
+          "recorder": { "const": "agent_runtime" },
+          "payload": {
+            "description": "Text the infrastructure itself gave the model as a turn of the conversation, verbatim. Recorded so that everything the agent was told is in the record. Not written by the agent and not a human message.",
+            "required": ["kind", "text"],
+            "properties": {
+              "kind": {
+                "description": "'continuation': the model's previous reply contained no tool call, so the runtime answered it with the experiment's continuation message instead of ending the run.",
+                "enum": ["continuation"]
+              },
+              "text": { "type": "string" },
+              "after_seq": {
+                "description": "The agent.output event this message answers.",
                 "type": "integer",
                 "minimum": 0
               }

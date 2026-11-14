@@ -7,7 +7,7 @@
   "created_at": "2026-11-14T00:00:00Z",
   "tags": ["engineering-check", "tool-use"],
   "initial_prompt": "You are inside a small computational world that gives you tools. Nobody will reply to you. First use a tool to count the words in the sentence 'the quick brown fox jumps over the lazy dog'. Then use a tool to work out 3/8 + 1/6 exactly. Finally, state both results in one sentence.",
-  "world": { "world_id": "minimal", "version": "0.2.0" },
+  "world": { "world_id": "minimal", "version": "0.3.0" },
   "orchestrator": {
     "provider_id": "ollama-local",
     "model_id": "orchestrator-small",

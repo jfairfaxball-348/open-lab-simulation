@@ -1,0 +1,44 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "orchestrator-open-trial",
+  "title": "Orchestrator candidate open trial: qwen3:4b",
+  "research_question": "None. This is an engineering comparison of candidate orchestrator models (decision OD-2): whether each uses the tool-call channel without being told to, and how it behaves when it is answered with the continuation message. A few short runs per model say nothing general about agent behaviour.",
+  "created_at": "2026-11-14T09:00:00Z",
+  "tags": [
+    "engineering-check",
+    "model-comparison"
+  ],
+  "initial_prompt": "You exist inside a computational world. Its creator has left and will return in ten minutes. Nobody will send you further instructions. You may explore this world and use whatever you find in it.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.3.0"
+  },
+  "orchestrator": {
+    "provider_id": "ollama-local",
+    "model_id": "orchestrator-qwen3-4b",
+    "sampling": {
+      "temperature": 0.7,
+      "seed": 1,
+      "max_output_tokens": 512
+    }
+  },
+  "limits": {
+    "wall_clock_s": 300,
+    "max_steps": 20
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "loopback",
+    "gpu": true,
+    "models": [
+      "orchestrator-qwen3-4b"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "replication": {
+    "condition": "qwen3:4b"
+  }
+}

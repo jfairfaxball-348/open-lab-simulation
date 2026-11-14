@@ -56,7 +56,6 @@ class ModelReply:
 class ModelClient(Protocol):
     model_id: str
     # True for real models: a reply with no tool call ends the run.
-    ends_without_tool_calls: bool
 
     def chat(self, messages: list[dict[str, Any]]) -> ModelReply | None:
         """The next reply, or None when the model has nothing further to say.
@@ -73,7 +72,6 @@ class ScriptedModel:
     """
 
     model_id = SCRIPTED_MODEL_ID
-    ends_without_tool_calls = False
 
     def __init__(self, replies: list[dict[str, Any]]):
         self._replies = list(replies)
@@ -200,8 +198,21 @@ def parse_reply(message: dict[str, Any], names: dict[str, str]) -> tuple[str, li
     return text, calls, repairs
 
 
-def fit_context(messages: list[dict[str, Any]], fixed_chars: int, budget_chars: int) -> int:
-    """Blank the oldest tool results, in place, until the request fits. Returns how many."""
+def fit_context(
+    messages: list[dict[str, Any]], fixed_chars: int, budget_chars: int
+) -> tuple[int, int]:
+    """Shorten the conversation in place until the request fits.
+
+    First the oldest tool results are blanked. If that is not enough, the
+    oldest whole turns are dropped: an assistant message goes together with
+    its tool results, so no result is left without its call. The initial
+    prompt (the first message) and the latest message are never removed; if
+    those two alone do not fit, the request is sent as it is.
+
+    Returns (tool results blanked, messages dropped). Doing this explicitly,
+    and recording it, is the alternative to the server silently cutting the
+    start of the prompt.
+    """
     def size() -> int:
         return fixed_chars + sum(len(json.dumps(m)) for m in messages)
 
@@ -209,16 +220,26 @@ def fit_context(messages: list[dict[str, Any]], fixed_chars: int, budget_chars: 
     for message in messages:
         if size() <= budget_chars:
             break
-        if message.get("role") == "tool" and message.get("content") != TRUNCATED_RESULT:
+        content = message.get("content")
+        # Blanking only helps when the result is longer than the notice replacing it.
+        if (message.get("role") == "tool" and isinstance(content, str)
+                and len(content) > len(TRUNCATED_RESULT)):
             message["content"] = TRUNCATED_RESULT
             truncated += 1
-    return truncated
+    dropped = 0
+    while size() > budget_chars and len(messages) > 2:
+        end = 2
+        while end < len(messages) and messages[end].get("role") == "tool":
+            end += 1
+        if end >= len(messages):
+            break  # the oldest turn runs into the latest message, which must stay
+        dropped += end - 1
+        del messages[1:end]
+    return truncated, dropped
 
 
 class OpenAIChatModel:
     """A model behind a local OpenAI-compatible ``/chat/completions`` endpoint."""
-
-    ends_without_tool_calls = True
 
     def __init__(
         self,
@@ -253,9 +274,13 @@ class OpenAIChatModel:
 
     def chat(self, messages: list[dict[str, Any]]) -> ModelReply | None:
         details: dict[str, Any] = {}
-        truncated = fit_context(messages, len(json.dumps(self._tools)), self._budget_chars)
+        truncated, dropped = fit_context(
+            messages, len(json.dumps(self._tools)), self._budget_chars
+        )
         if truncated:
             details["context_truncated_tool_results"] = truncated
+        if dropped:
+            details["context_dropped_messages"] = dropped
         body: dict[str, Any] = {
             "model": self._provider_ref, "messages": messages, "tools": self._tools,
             "stream": False,

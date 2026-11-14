@@ -133,6 +133,8 @@ def model_config(make_config):
             "orchestrator": {"provider_id": "ollama-local", "model_id": "orchestrator-small",
                              "sampling": {"temperature": 0, "seed": 7}},
             "permissions": {"network": "loopback", "models": ["orchestrator-small"]},
+            # A reply without a tool call no longer ends a run, so tests bound it.
+            "limits": {"wall_clock_s": 60, "max_steps": 4},
             "extensions": {},
         }
         base.update(changes)
@@ -164,14 +166,15 @@ def test_run_with_a_model_server_uses_tools_and_is_recorded(model_root, model_co
         {"content": "I have finished."},
     ]
     result = run_experiment(model_config(), model_root)
-    assert (result.state, result.reason) == ("completed", "the model made no tool call")
+    # A reply without a tool call does not end the run; the step limit does.
+    assert (result.state, result.reason) == ("terminated", "max_steps")
     assert verify_archive(result.archive) == []
 
     events = events_of(result.archive)
     assert [r["status"] for r in tool_results(events)] == ["ok", "ok"]
     assert tool_results(events)[1]["result"] == {"value": 0.75, "exact": "3/4"}
     calls = model_calls(events)
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert calls[0]["model_id"] == "orchestrator-small"
     assert (calls[0]["input_tokens"], calls[0]["output_tokens"]) == (101, 7)
     agent_events = [e for e in events if e.get("actor", {}).get("kind") == "agent"]
@@ -180,8 +183,69 @@ def test_run_with_a_model_server_uses_tools_and_is_recorded(model_root, model_co
                        "provider_id": "ollama-local"} for e in agent_events
     )
     assert [e["payload"]["text"] for e in events if e["type"] == "agent.output"] == [
-        "", "Now some arithmetic.", "I have finished."
+        "", "Now some arithmetic.", "I have finished.", "Nothing more."
     ]
+
+
+DEFAULT_CONTINUATION = ("No one has replied. The world is still running, and the tools "
+                        "available to you are unchanged.")
+
+
+def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
+    model_root, model_config, server
+):
+    server.replies = [
+        {"content": "I will just think for a while."},
+        {"content": "", "tool_calls": [tool_call("text_stats", json.dumps({"text": "a b"}))]},
+    ]
+    result = run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 3}), model_root)
+    assert (result.state, result.reason) == ("terminated", "max_steps")
+    events = events_of(result.archive)
+    sequence = [e["type"] for e in events if e["type"] != "run.state_changed"]
+    assert sequence == [
+        "model.call", "agent.output", "environment.message",       # no tool call: continue
+        "model.call", "agent.output", "tool.call", "tool.result",  # the model acts again
+        "model.call", "agent.output", "environment.message",       # "Nothing more.": continue
+        "supervisor.action",                                       # ended by the step limit
+    ]
+    messages = [e for e in events if e["type"] == "environment.message"]
+    for message in messages:
+        assert message["payload"]["kind"] == "continuation"
+        assert message["payload"]["text"] == DEFAULT_CONTINUATION
+        assert message["recorder"] == "agent_runtime" and message["actor"] == {"kind": "system"}
+        assert message["epistemic_status"] == "observed"
+        answered = events[message["payload"]["after_seq"]]
+        assert answered["type"] == "agent.output" and answered["seq"] == message["seq"] - 1
+    # The model was given exactly the recorded text, as a user turn, and nothing else.
+    assert server.requests[1]["messages"] == [
+        {"role": "user", "content": "You may use whatever you find."},
+        {"role": "assistant", "content": "I will just think for a while."},
+        {"role": "user", "content": DEFAULT_CONTINUATION},
+    ]
+    assert verify_archive(result.archive) == []
+
+
+def test_the_experiment_chooses_the_continuation_text(model_root, model_config, server):
+    server.replies = [{"content": "Hello?"}]
+    config = model_config(limits={"wall_clock_s": 60, "max_steps": 2},
+                          continuation={"message": "Time passes."})
+    result = run_experiment(config, model_root)
+    texts = [e["payload"]["text"] for e in events_of(result.archive)
+             if e["type"] == "environment.message"]
+    assert texts == ["Time passes.", "Time passes."]
+    assert server.requests[1]["messages"][-1] == {"role": "user", "content": "Time passes."}
+
+
+def test_dropped_turns_keep_the_prompt_and_are_recorded(root, release, server, model_config):
+    point_world_at(release, server.base + "/v1", context_window_tokens=1100)
+    server.replies = [{"content": f"reply {n} " + "word " * 120} for n in range(6)]
+    result = run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 6}), root)
+    calls = model_calls(events_of(result.archive))
+    assert any(c.get("context_dropped_messages") for c in calls)
+    last = server.requests[-1]["messages"]
+    assert last[0] == {"role": "user", "content": "You may use whatever you find."}
+    assert last[-1]["role"] == "user" and "reply 0 " not in json.dumps(last)
+    assert verify_archive(result.archive) == []
 
 
 def test_requests_carry_only_the_prompt_the_tools_and_the_conversation(
@@ -189,7 +253,7 @@ def test_requests_carry_only_the_prompt_the_tools_and_the_conversation(
 ):
     server.replies = [{"content": "", "tool_calls": [
         tool_call("text_stats", json.dumps({"text": "a b"}))]}]
-    run_experiment(model_config(), model_root)
+    run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 2}), model_root)
     first, second = server.requests
     assert first["model"] == "llama3.2:3b" and first["stream"] is False
     assert (first["temperature"], first["seed"]) == (0, 7)
@@ -276,16 +340,18 @@ def test_old_tool_results_are_dropped_to_fit_the_context(root, release, server, 
     ]
     result = run_experiment(model_config(), root)
     calls = model_calls(events_of(result.archive))
-    assert any(c.get("context_truncated_tool_results") for c in calls)
-    dropped = [m for m in server.requests[-1]["messages"] if m.get("content") == TRUNCATED_RESULT]
-    assert dropped and server.requests[-1]["messages"][0]["role"] == "user"
+    # These results are shorter than the blanking notice, so whole turns are dropped
+    # instead (the unit tests cover blanking long results).
+    assert any(c.get("context_dropped_messages") for c in calls)
+    assert server.requests[-1]["messages"][0] == {
+        "role": "user", "content": "You may use whatever you find."}
     assert verify_archive(result.archive) == []
 
 
 def test_one_server_failure_is_retried_and_recorded(model_root, model_config, server):
     server.replies = [500, {"content": "recovered"}]
     result = run_experiment(model_config(), model_root)
-    assert result.state == "completed"
+    assert (result.state, result.reason) == ("terminated", "max_steps")
     assert model_calls(events_of(result.archive))[0]["retries"] == 1
 
 
@@ -405,12 +471,41 @@ def test_fit_context_blanks_oldest_tool_results_first():
     for n in range(4):
         messages += [{"role": "assistant", "content": "x"},
                      {"role": "tool", "tool_call_id": str(n), "content": "r" * 1000}]
-    assert fit_context(messages, 0, 10**6) == 0
-    assert fit_context(messages, 0, 3000) == 2
+    assert fit_context(messages, 0, 10**6) == (0, 0)
+    assert fit_context(messages, 0, 3000) == (2, 0)
     contents = [m["content"] for m in messages if m["role"] == "tool"]
     assert contents[:2] == [TRUNCATED_RESULT] * 2 and contents[2] == "r" * 1000
     assert messages[0]["content"] == "prompt"
-    assert fit_context(messages, 0, 3000) == 0, "already-blanked results are not counted again"
+    assert fit_context(messages, 0, 3000) == (0, 0), "already-blanked results not counted again"
+
+
+def test_fit_context_then_drops_whole_turns_but_never_the_prompt_or_the_latest():
+    def conversation():
+        messages = [{"role": "user", "content": "prompt"}]
+        for n in range(3):
+            messages += [{"role": "assistant", "content": "a" * 500, "tool_calls": [{"id": n}]},
+                         {"role": "tool", "tool_call_id": str(n), "content": "r"},
+                         {"role": "user", "content": "continue"}]
+        return messages
+
+    messages = conversation()
+    budget = sum(len(json.dumps(m)) for m in messages) - 600
+    _, dropped = fit_context(messages, 0, budget)
+    # The oldest assistant message goes together with its result; nothing more is needed.
+    assert dropped == 2 and messages[0]["content"] == "prompt"
+    assert sum(len(json.dumps(m)) for m in messages) <= budget
+    assert [m["role"] for m in messages] == ["user", "user"] + ["assistant", "tool", "user"] * 2
+    # No tool result is ever left without the call it answers.
+    for index, message in enumerate(messages):
+        if message["role"] == "tool":
+            assert messages[index - 1]["role"] in ("assistant", "tool")
+    messages = conversation()
+    fit_context(messages, 0, 1)
+    assert [m["content"] for m in messages] == ["prompt", "continue"]
+    # A last turn that is an assistant with its results is kept whole or not at all.
+    messages = [{"role": "user", "content": "p"}, {"role": "assistant", "content": "a" * 900},
+                {"role": "tool", "tool_call_id": "1", "content": "r"}]
+    assert fit_context(messages, 0, 1)[1] == 0 and len(messages) == 3
 
 
 def test_model_client_only_talks_to_this_machine():

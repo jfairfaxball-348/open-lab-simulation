@@ -6,7 +6,8 @@ something recorded it sends a request up a pipe and waits for the supervisor
 to acknowledge it, so the record is written before the agent can act again.
 
 Pipe protocol, one JSON object per line:
-  stdin   first line: the launch specification; then ``{"ack": n}`` per request
+  stdin   first line: the launch specification; then ``{"ack": true, "seq": n}``
+          per request, ``seq`` being the recorded event's number (null if refused)
   stdout  ``{"event": {...}}`` requests, then one ``{"end": {...}}``
 """
 
@@ -38,10 +39,12 @@ class Channel:
             raise SystemExit(3)  # the supervisor has gone; there is nobody to work for
         return json.loads(line.decode("utf-8"))
 
-    def emit(self, request: dict[str, Any]) -> None:
+    def emit(self, request: dict[str, Any]) -> int | None:
+        """Have an event recorded; returns its sequence number once it is on record."""
         self._out.write(json.dumps({"event": request}) + "\n")
         self._out.flush()
-        self.read()
+        seq = self.read().get("seq")
+        return seq if isinstance(seq, int) else None
 
     def end(self, reason: str, steps: int) -> None:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
@@ -55,8 +58,15 @@ def run_loop(
     prompt: str,
     max_steps: int | None,
     actor: dict[str, Any],
+    continuation: str,
 ) -> tuple[str, int]:
-    """The agent loop. Returns why it ended and how many steps it took."""
+    """The agent loop. Returns why it ended and how many steps it took.
+
+    A reply without a tool call does not end the run (decision OD-5). Nobody
+    else speaks in a run, so the runtime answers with the experiment's fixed
+    continuation message, records exactly that, and asks the model again. The
+    run then ends only at the step limit, the deadline or a failure.
+    """
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
     steps = 0
     while max_steps is None or steps < max_steps:
@@ -83,8 +93,8 @@ def run_loop(
         output: dict[str, Any] = {"text": reply.text[:MAX_OUTPUT_CHARS]}
         if len(reply.text) > MAX_OUTPUT_CHARS:
             output["truncated"] = True
-        emit({"recorder": "agent_runtime", "type": "agent.output", "actor": actor,
-              "payload": output})
+        output_seq = emit({"recorder": "agent_runtime", "type": "agent.output",
+                           "actor": actor, "payload": output})
         # The conversation is kept in the chat-completions shape, as the model wrote it.
         said: dict[str, Any] = {"role": "assistant", "content": reply.text}
         if reply.tool_calls:
@@ -98,9 +108,14 @@ def run_loop(
             result = host.call(call.capability_id, call.arguments)
             messages.append({"role": "tool", "tool_call_id": call.id,
                              "content": json.dumps(result)})
-        if not reply.tool_calls and model.ends_without_tool_calls:
-            # Nobody else speaks in a run, so there is nothing for the model to answer.
-            return "no_tool_calls", steps
+        if not reply.tool_calls:
+            payload: dict[str, Any] = {"kind": "continuation", "text": continuation}
+            if output_seq is not None:
+                payload["after_seq"] = output_seq
+            # Recorded before the model can see it, like everything else it is told.
+            emit({"recorder": "agent_runtime", "type": "environment.message",
+                  "actor": {"kind": "system"}, "payload": payload})
+            messages.append({"role": "user", "content": continuation})
     return "max_steps", steps
 
 
@@ -133,7 +148,8 @@ def main() -> int:
         allow=spec.get("allow"), deny=spec.get("deny"),
     )
     reason, steps = run_loop(
-        model, host, channel.emit, spec["initial_prompt"], spec.get("max_steps"), actor
+        model, host, channel.emit, spec["initial_prompt"], spec.get("max_steps"), actor,
+        spec["continuation_message"],
     )
     channel.end(reason, steps)
     return 0

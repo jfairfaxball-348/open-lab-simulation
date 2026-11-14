@@ -2,21 +2,20 @@
   "schema": "open-lab/world-release",
   "schema_version": "1.0.0",
   "world_id": "minimal",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "name": "Minimal world",
   "description": "The smallest useful world: two deterministic capabilities (text.stats, math.evaluate) and one local model provider manifest, included as documentation only.",
-  "created_at": "2026-11-13T23:23:39Z",
+  "created_at": "2026-11-14T08:43:30Z",
   "status": "validated",
   "builder": {
-    "version": "0.1.0",
-    "git_commit": "08052396f39d5bf7990dc7e6f6f390c540fdb7b1"
+    "version": "0.1.0"
   },
   "contracts": {
     "world-release": "1.0.0",
     "capability": "1.0.1",
     "model-provider": "1.0.0",
-    "experiment-config": "1.0.0",
-    "observation-event": "1.0.0",
+    "experiment-config": "1.1.0",
+    "observation-event": "1.1.0",
     "artifact-metadata": "1.0.0",
     "checkpoint-metadata": "1.0.0",
     "common": "1.0.0"
@@ -39,7 +38,7 @@
     {
       "provider_id": "ollama-local",
       "manifest_path": "models/ollama-local.json",
-      "sha256": "09bff47c37553ca07877b64fad4dbdd521a3096ee9f4945aec82390630f23ca8"
+      "sha256": "fc14d80d5d15e26bed6e9295fef32c222ce9ae3a926855360c599bd6c35edd6e"
     }
   ],
   "environment": {
@@ -68,7 +67,7 @@
     "subprocess": false,
     "gpu": true
   },
-  "notes": "The model provider manifest names a model that has not been downloaded or measured. Nothing in this world calls a model.",
+  "notes": "0.3.0 bundles observation-event 1.1.0 and experiment-config 1.1.0 (the continuation message, decision OD-5) and records the orchestrator candidates measured in S003c. The capabilities are unchanged from 0.1.0.",
   "extensions": {
     "files": [
       {
@@ -105,7 +104,7 @@
       },
       {
         "path": "contracts/v1/experiment-config.schema.json",
-        "sha256": "fa2d4c361fc32e449d771898bf38a6906645cf079107279e778d15ed5e0fef85"
+        "sha256": "c4105a599343f15bea9d7caa4748625f9c2875b48b549586299502899fe99a7e"
       },
       {
         "path": "contracts/v1/model-provider.schema.json",
@@ -113,7 +112,7 @@
       },
       {
         "path": "contracts/v1/observation-event.schema.json",
-        "sha256": "3b8296162fd215dcb33df0bc03f8ab265f7b6d230a07886e4ec4e173c0c226e2"
+        "sha256": "2047d60a44c3674c76625edbf8881db33d58bee3fdd09c71deb6786d91c902e1"
       },
       {
         "path": "contracts/v1/world-release.schema.json",
@@ -121,12 +120,12 @@
       },
       {
         "path": "models/ollama-local.json",
-        "sha256": "09bff47c37553ca07877b64fad4dbdd521a3096ee9f4945aec82390630f23ca8"
+        "sha256": "fc14d80d5d15e26bed6e9295fef32c222ce9ae3a926855360c599bd6c35edd6e"
       }
     ]
   },
   "content_digest": {
     "algorithm": "sha256",
-    "value": "8162ed32c7bc1b74d89a99aa8e0248d3bd86a9724c4922ff38e32524b5d37b10"
+    "value": "52d1fb64f73fab8324959481fd681a8f5ee5f5684bf60ce31b31a0c716058ff9"
   }
 }

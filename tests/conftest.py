@@ -11,7 +11,7 @@ from open_lab_simulation.world import MANIFEST_NAME, compute_content_digest, fil
 
 REPO = Path(__file__).resolve().parent.parent
 # A release built by the Builder (olb world build worlds/minimal), copied here as test data.
-FIXTURE_WORLD = REPO / "tests" / "fixtures" / "worlds" / "minimal" / "0.1.0"
+FIXTURE_WORLD = REPO / "tests" / "fixtures" / "worlds" / "minimal" / "0.3.0"
 
 # Capabilities that exist only for these tests. Each is {id: (permissions, timeout, code)}.
 TEST_CAPABILITIES = {
@@ -109,7 +109,7 @@ def add_test_capabilities(release: Path) -> None:
 def root(tmp_path) -> Path:
     """A private data root holding the minimal world plus the test-only capabilities."""
     data = tmp_path / "data"
-    release = data / "worlds" / "minimal" / "0.1.0"
+    release = data / "worlds" / "minimal" / "0.3.0"
     shutil.copytree(FIXTURE_WORLD, release)
     add_test_capabilities(release)
     return data
@@ -117,7 +117,7 @@ def root(tmp_path) -> Path:
 
 @pytest.fixture
 def release(root) -> Path:
-    return root / "worlds" / "minimal" / "0.1.0"
+    return root / "worlds" / "minimal" / "0.3.0"
 
 
 def call(capability_id: str, **arguments) -> dict:
@@ -130,12 +130,12 @@ def make_config(tmp_path):
     def make(replies, *, wall_clock_s=60, name="test-run", **changes) -> Path:
         config = {
             "schema": "open-lab/experiment-config",
-            "schema_version": "1.0.0",
+            "schema_version": "1.1.0",
             "experiment_id": name,
             "title": "Test run",
             "created_at": "2026-11-13T00:00:00Z",
             "initial_prompt": "You may use whatever you find.",
-            "world": {"world_id": "minimal", "version": "0.1.0"},
+            "world": {"world_id": "minimal", "version": "0.3.0"},
             "orchestrator": {"provider_id": "scripted", "model_id": "scripted"},
             "limits": {"wall_clock_s": wall_clock_s},
             "permissions": {"filesystem": "workspace_write", "network": "none"},

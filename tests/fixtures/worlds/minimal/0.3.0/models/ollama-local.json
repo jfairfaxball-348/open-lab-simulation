@@ -1,0 +1,154 @@
+{
+  "schema": "open-lab/model-provider",
+  "schema_version": "1.0.0",
+  "provider": {
+    "id": "ollama-local",
+    "name": "Ollama on the host",
+    "kind": "ollama",
+    "locality": "local",
+    "api": {
+      "protocol": "openai_chat_completions",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "supports_explicit_unload": true
+    },
+    "version": "0.40.16"
+  },
+  "models": [
+    {
+      "id": "orchestrator-small",
+      "provider_ref": "llama3.2:3b",
+      "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "family": "llama",
+      "parameter_count": "3.2B",
+      "quantization": "Q4_K_M",
+      "roles": [
+        "orchestrator",
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 4096,
+      "features": {
+        "tool_calling": true,
+        "streaming": true
+      },
+      "footprint": {
+        "disk_mb": 1926,
+        "ram_mb": 561,
+        "vram_mb": 2239,
+        "measured": true
+      },
+      "status": "available",
+      "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model': 2800 MB loaded, of which 2239 MB on the GPU and 561 MB in system RAM; cold load 33 s, warm load 3 s; about 62 output tokens per second. The context window is the server's default as reported by Ollama, not the model's maximum. Tool calling was checked in one short prompted run, which is evidence that it works, not that it is reliable."
+    },
+    {
+      "id": "orchestrator-qwen35-2b",
+      "provider_ref": "qwen3.5:2b",
+      "digest": "0689d44085e06d165161a8a9a1731344278cfb5aade63a3c3dbdb48ab54b130a",
+      "family": "qwen35",
+      "parameter_count": "1.9B",
+      "quantization": "Q8_0",
+      "license": "Apache-2.0",
+      "roles": [
+        "orchestrator",
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 4096,
+      "features": {
+        "tool_calling": true,
+        "streaming": true
+      },
+      "footprint": {
+        "disk_mb": 2559,
+        "ram_mb": 1052,
+        "vram_mb": 1773,
+        "measured": true
+      },
+      "status": "available",
+      "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model', warm: 2825 MB loaded, of which 1773 MB on the GPU and 1052 MB in system RAM; load 8.5 s (23 s cold); about 42 output tokens per second. The server reports a thinking capability; the runtime never records a reasoning channel. Image input is not used by this world. Candidate compared in S003c."
+    },
+    {
+      "id": "orchestrator-qwen3-4b",
+      "provider_ref": "qwen3:4b",
+      "digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "family": "qwen3",
+      "parameter_count": "4.0B",
+      "quantization": "Q4_K_M",
+      "license": "Apache-2.0",
+      "roles": [
+        "orchestrator",
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 4096,
+      "features": {
+        "tool_calling": true,
+        "streaming": true
+      },
+      "footprint": {
+        "disk_mb": 2382,
+        "ram_mb": 1135,
+        "vram_mb": 2236,
+        "measured": true
+      },
+      "status": "available",
+      "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model', warm: 3371 MB loaded, of which 2236 MB on the GPU and 1135 MB in system RAM; load 4.9 s; about 33 output tokens per second. The server reports a thinking capability; the runtime never records a reasoning channel. Candidate compared in S003c."
+    },
+    {
+      "id": "orchestrator-granite41-3b",
+      "provider_ref": "granite4.1:3b",
+      "digest": "6fd349357287c7ffc9e38189a93b48ea175d24fc566b38f09cfc564fb7f303eb",
+      "family": "granite",
+      "parameter_count": "3.4B",
+      "quantization": "Q4_K_M",
+      "license": "Apache-2.0",
+      "roles": [
+        "orchestrator",
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 4096,
+      "features": {
+        "tool_calling": true,
+        "streaming": true
+      },
+      "footprint": {
+        "disk_mb": 2002,
+        "ram_mb": 392,
+        "vram_mb": 2245,
+        "measured": true
+      },
+      "status": "available",
+      "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model', warm: 2637 MB loaded, of which 2245 MB on the GPU and 392 MB in system RAM; load 3.0 s warm (11.6 s cold); about 58 output tokens per second warm (the cold measurement, 4 tokens per second, was taken while the model was still being paged in). Candidate compared in S003c."
+    }
+  ]
+}

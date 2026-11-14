@@ -37,9 +37,12 @@ and works:
 What does **not** exist yet:
 
 - **No experiment has been run.** One small model (`llama3.2:3b`) has driven
-  short engineering checks. It calls tools correctly when asked to; without
-  instruction it mostly does not, and a run ends at the first reply that
-  contains no tool call. See the Builder's `docs/experiments/`.
+  short engineering checks, and three more candidates were compared in
+  S003c. See the Builder's `docs/experiments/`.
+- A reply without a tool call does not end a run: the runtime answers with
+  the experiment's continuation message (recorded as an `environment.message`
+  event) and the run continues to its step limit or deadline. Worlds built
+  before 0.3.0 are refused because their contracts cannot record this.
 - The scripted stand-in remains for tests: it replays fixed replies and its
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
