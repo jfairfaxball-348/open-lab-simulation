@@ -40,8 +40,29 @@ edits. Prior summaries are kept under `segments/`; stderr is appended.
 
 Corrupt snapshots remain forensic evidence and `ols verify` still reports them
 after a successful fallback. Hard deadlines retain the preceding safe snapshot.
-The `checkpoint_then_stop` mode, automatic crash/reboot recovery and stale-lock
-handling remain S006b; S006a manual resume needs a stopped run with a summary.
+
+**S006b graceful deadlines are implemented.** Set
+`termination.on_deadline` to `checkpoint_then_stop` with `checkpointing` enabled.
+At the original deadline the supervisor records a stop request. The in-flight
+step may finish within `termination.grace_period_s` (default zero), then the
+supervisor snapshots at its complete-step barrier and kills the tree before
+acknowledging it. No following step starts. Grace is one fixed allowance after
+the original deadline, including snapshot time; it is not reset by resume.
+A hung model/capability or expired snapshot allowance causes termination using
+the preceding safe checkpoint. `hard_stop` ignores grace and retains its
+original behaviour. Active time includes grace, so a run that exhausts its
+original budget cannot be manually resumed to obtain more time.
+
+```bash
+uv run ols run experiments/scripted-graceful-deadline.json
+uv run ols verify <archive printed above>
+```
+
+Automatic crash/reboot recovery and stale-lock handling remain S006d;
+resource enforcement and sampling remain S006e. Manual resume needs a stopped
+run with a summary. Deadline notices are still refused. Snapshot deadline
+checks are cooperative between I/O chunks; uninterruptible host I/O and
+large-run timing bounds are unverified. See the Builder's ADR-0010.
 Operator `--pause-after-steps` is the tested CLI stop mechanism. Ctrl+C while
 the supervisor waits requests a pause at the next complete-step barrier; native
 console signal delivery to the entire process tree remains unverified.

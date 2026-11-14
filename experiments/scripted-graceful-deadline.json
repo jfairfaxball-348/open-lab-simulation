@@ -1,0 +1,71 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "scripted-graceful-deadline",
+  "title": "Engineering check: bounded graceful deadline",
+  "research_question": "None. This is an engineering check that a run is launched, supervised and recorded end to end. The replies are fixed in advance, so it says nothing about how any agent behaves.",
+  "created_at": "2026-11-14T10:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check"
+  ],
+  "initial_prompt": "Explore the world and keep working notes for later.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.6.0"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 2
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "termination": {
+    "on_deadline": "checkpoint_then_stop",
+    "grace_period_s": 3
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "text": "Completing the in-flight step.",
+          "delay_s": 2.1,
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "memory.write",
+                "arguments": {
+                  "key": "plan",
+                  "value": "first"
+                }
+              }
+            },
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "NOTES.md",
+                  "text": "Working notes before pause.\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "This following step must never start."
+        }
+      ]
+    }
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 3
+  }
+}

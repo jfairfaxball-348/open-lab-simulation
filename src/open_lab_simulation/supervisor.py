@@ -76,8 +76,11 @@ class RunResult:
 
 def _unsupported(config: dict[str, Any], world: World) -> str | None:
     """Things the contracts allow but this runtime cannot yet honour. Refuse, never pretend."""
-    if config["termination"]["on_deadline"] != "hard_stop":
-        return "cooperative deadline checkpointing is not implemented; use hard_stop"
+    if (
+        config["termination"]["on_deadline"] == "checkpoint_then_stop"
+        and "checkpointing" not in config
+    ):
+        return "checkpoint_then_stop requires checkpointing"
     if "notify_agent_before_s" in config["termination"]:
         return "deadline notices are not implemented"
     if continuation_message(config, world) is None:
@@ -460,7 +463,14 @@ def _run_prepared(
                 elapsed_offset + time.monotonic() - segment_started,
                 reason,
                 config.get("checkpointing", {}).get("keep_last", 3),
-                deadline=segment_started + config["limits"]["wall_clock_s"] - elapsed_offset,
+                deadline=(
+                    segment_started + config["limits"]["wall_clock_s"] - elapsed_offset
+                    + (
+                        config["termination"].get("grace_period_s", 0)
+                        if config["termination"]["on_deadline"] == "checkpoint_then_stop"
+                        else 0
+                    )
+                ),
             )
 
         final, reason = _supervise(
@@ -473,6 +483,7 @@ def _run_prepared(
             checkpointing=config.get("checkpointing"),
             snapshot=snapshot,
             pause_after_steps=pause_after_steps,
+            termination=config["termination"],
         )
         if final == "terminated":
             change("stopping", reason)
@@ -484,7 +495,7 @@ def _run_prepared(
             actor=supervisor,
             payload={
                 "action": "terminated",
-                "detail": "wall_clock_s reached during checkpoint creation",
+                "detail": "deadline allowance exhausted during checkpoint creation",
             },
         )
         final, reason = "terminated", "deadline"
@@ -572,6 +583,7 @@ def _supervise(
     checkpointing=None,
     snapshot=None,
     pause_after_steps=None,
+    termination=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -584,6 +596,11 @@ def _supervise(
 
     threading.Thread(target=pump, daemon=True).start()
     deadline = time.monotonic() + wall_clock_s
+    termination = termination or {"on_deadline": "hard_stop"}
+    graceful = termination["on_deadline"] == "checkpoint_then_stop"
+    hard_deadline = deadline + (termination.get("grace_period_s", 0) if graceful else 0)
+    deadline_requested = False
+    deadline_checkpointed = False
     open_calls: dict[str, str] = {}  # correlation id -> capability id
     ended: dict[str, Any] | None = None
     last_seq: int | None = None
@@ -603,14 +620,34 @@ def _supervise(
             },
         )
 
-    def handle(line: bytes) -> None:
-        nonlocal ended, last_seq, next_checkpoint, stop_sent
+    def request_deadline() -> None:
+        nonlocal deadline_requested
+        if graceful and not deadline_requested and time.monotonic() >= deadline:
+            deadline_requested = True
+            recorder.record(
+                recorder="supervisor",
+                type="supervisor.action",
+                actor=supervisor,
+                payload={
+                    "action": "limit_enforced",
+                    "detail": "deadline reached; stop at the next complete-step checkpoint",
+                    "extensions": {"stage": "deadline_checkpoint_requested"},
+                },
+            )
+
+    def handle(line: bytes, *, stopped: bool = False) -> None:
+        nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed
         last_seq = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             return refuse("not JSON")
         if isinstance(message, dict) and isinstance(message.get("state"), dict):
+            # After killing a busy tree its live files no longer match a queued
+            # barrier. Retain previous safe snapshots; never snapshot that state.
+            if stopped:
+                return None
+            request_deadline()
             runtime = message["state"]
             fields = ("steps", "script_cursor", "call_count", "tokens_used")
             if (
@@ -620,19 +657,27 @@ def _supervise(
                 or any(not isinstance(runtime.get(k), int) or runtime[k] < 0 for k in fields)
             ):
                 return refuse("invalid checkpoint state barrier")
-            stop_sent = pause_requested or (
+            stop_sent = deadline_requested or pause_requested or (
                 pause_after_steps is not None and runtime["steps"] >= pause_after_steps
             )
             now = time.monotonic()
             if stop_sent or message.get("final") or now >= next_checkpoint:
                 reason = (
-                    "operator_request"
+                    "pre_shutdown"
+                    if deadline_requested
+                    else "operator_request"
                     if stop_sent
                     else "pre_shutdown"
                     if message.get("final")
                     else "interval"
                 )
-                snapshot(runtime, reason)
+                try:
+                    snapshot(runtime, reason)
+                finally:
+                    # I/O can cross the nominal deadline, including when the
+                    # snapshot times out. Record enforcement before termination.
+                    request_deadline()
+                deadline_checkpointed = deadline_requested
                 next_checkpoint = time.monotonic() + checkpointing.get("interval_s", 60)
             return None
         if isinstance(message, dict) and isinstance(message.get("end"), dict):
@@ -711,21 +756,37 @@ def _supervise(
         except OSError:
             pass  # the runtime has already gone; its exit is handled below
 
+    def deadline_stop(pending: bytes | None = None) -> tuple[str, str]:
+        # Preserve observation order, but ignore state barriers after killing.
+        tree.kill()
+        if pending is not None:
+            handle(pending, stopped=True)
+        _drain(messages, lambda line: handle(line, stopped=True))
+        recorder.record(
+            recorder="supervisor",
+            type="supervisor.action",
+            actor=supervisor,
+            payload={
+                "action": "terminated",
+                "detail": (
+                    "deadline grace exhausted; retaining the previous safe checkpoint"
+                    if graceful else "wall_clock_s limit reached"
+                ),
+            },
+        )
+        return "terminated", "deadline"
+
     while ended is None:
-        remaining = deadline - time.monotonic()
+        request_deadline()
+        remaining = hard_deadline - time.monotonic()
         if remaining <= 0:
-            # Kill first, then write down what had already happened, then the action.
-            tree.kill()
-            _drain(messages, handle)
-            recorder.record(
-                recorder="supervisor",
-                type="supervisor.action",
-                actor=supervisor,
-                payload={"action": "terminated", "detail": "wall_clock_s limit reached"},
-            )
-            return "terminated", "deadline"
+            return deadline_stop()
         try:
-            line = messages.get(timeout=min(remaining, 0.25))
+            # Wake at the nominal deadline even when there is a grace allowance.
+            wait = min(remaining, 0.25)
+            if not deadline_requested and graceful:
+                wait = min(wait, max(0.001, deadline - time.monotonic()))
+            line = messages.get(timeout=wait)
         except queue.Empty:
             continue
         except KeyboardInterrupt:
@@ -737,10 +798,35 @@ def _supervise(
         if line is None:
             code = process.wait()
             return "failed", f"the agent runtime exited unexpectedly (status {code})"
+        if time.monotonic() >= hard_deadline:
+            return deadline_stop(line)
         handle(line)
-        if ended is None:
+        if deadline_checkpointed:
+            # The worker is still waiting for this barrier's acknowledgement.
+            # Kill before acknowledging, so another model step cannot start.
+            tree.kill()
+            recorder.record(
+                recorder="supervisor",
+                type="supervisor.action",
+                actor=supervisor,
+                payload={
+                    "action": "terminated",
+                    "detail": "deadline complete-step checkpoint saved; runtime tree stopped",
+                },
+            )
+            return "terminated", "deadline"
+        if ended is None and time.monotonic() < hard_deadline:
             acknowledge()
 
+    if deadline_requested:
+        tree.kill()
+        recorder.record(
+            recorder="supervisor",
+            type="supervisor.action",
+            actor=supervisor,
+            payload={"action": "terminated", "detail": "deadline reached; runtime ended"},
+        )
+        return "terminated", "deadline"
     if ended.get("reason") == "operator_pause" and stop_sent:
         recorder.record(
             recorder="supervisor",
