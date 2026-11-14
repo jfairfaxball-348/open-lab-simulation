@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, container, gateway, ollama, policies, recovery, resources
+from . import __version__, container, faults, gateway, ollama, policies, recovery, resources
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -253,6 +253,7 @@ def _prepare(
     try:
         recovery.policy(config)
         resources.validate(config)
+        faults.enabled(config)
     except ValueError as error:
         raise LaunchError(str(error)) from None
     reason = _unsupported(config, world)
@@ -639,11 +640,17 @@ def _run_prepared(
         )
         scanner.scan({"kind": "system"})
     else:
+        initial_entries = sorted(p.relative_to(workspace).as_posix()
+                                 for p in workspace.rglob("*"))
         recorder.record(
             recorder="experiment_manager",
             type="run.state_changed",
             actor=system,
-            payload={"to": "created", "reason": "launch"},
+            payload={"to": "created", "reason": "launch", "extensions": {
+                "initial_workspace": {"files": initial_entries,
+                                      "sha256": policies.digest(initial_entries),
+                                      "memory_present": (workspace / ".memory.sqlite").exists()},
+            }},
         )
         change("starting", "launch", by="experiment_manager")
 
@@ -679,6 +686,7 @@ def _run_prepared(
                 else config["limits"].get("max_steps")
             ),
             "checkpointing": config.get("checkpointing"),
+            "benchmark_fault": faults.enabled(config),
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
             "deny": capabilities.get("deny"),
@@ -737,6 +745,10 @@ def _run_prepared(
                     if accounting and model["real_model"] else None),
             controller=controller, runtime_policy=model["runtime_policy"],
             restored_policy=resume is not None,
+            benchmark_fault=faults.enabled(config),
+            fault_used=bool(resume and any(
+                json.loads(line)["payload"].get("extensions", {}).get("stage") == "benchmark_fault"
+                for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines())),
         )
         if final == "terminated":
             change("stopping", reason)
@@ -870,6 +882,8 @@ def _supervise(
     controller=None,
     runtime_policy=None,
     restored_policy=False,
+    benchmark_fault=False,
+    fault_used=False,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -896,6 +910,7 @@ def _supervise(
     idle_recorded = False
     stop_sent = False
     last_denial = None
+    inject_fault = False
 
     def refuse(message: str) -> None:
         recorder.record(
@@ -926,7 +941,8 @@ def _supervise(
 
     def handle(line: bytes, *, stopped: bool = False) -> None:
         nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
-        nonlocal idle_recorded
+        nonlocal idle_recorded, fault_used, inject_fault
+        inject_fault = False
         last_seq = None
         last_denial = None
         try:
@@ -989,6 +1005,24 @@ def _supervise(
                     request_deadline()
                 deadline_checkpointed = deadline_requested
                 next_checkpoint = time.monotonic() + checkpointing.get("interval_s", 60)
+            return None
+        if isinstance(message, dict) and isinstance(message.get("benchmark_fault"), dict):
+            data = message["benchmark_fault"]
+            if (stopped or not benchmark_fault or len(open_calls) != 1
+                    or data.get("capability_id") not in open_calls.values()
+                    or denied_calls):
+                return refuse("invalid benchmark execution admission")
+            if not fault_used:
+                inject_fault = True
+                fault_used = True
+                recorder.record(
+                    recorder="supervisor", type="supervisor.action", actor=supervisor,
+                    payload={"action": "limit_enforced", "detail": "registered transient fault",
+                             "extensions": {"stage": "benchmark_fault", **data,
+                                            "correlation_id": next(iter(open_calls)),
+                                            "delivered": faults.OUTCOME}},
+                )
+                recorder.sync()
             return None
         if isinstance(message, dict) and isinstance(message.get("model_input"), dict):
             if stopped:
@@ -1092,7 +1126,7 @@ def _supervise(
         try:
             process.stdin.write(
                 (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent,
-                             "deny": last_denial}) + "\n").encode()
+                             "deny": last_denial, "inject_fault": inject_fault}) + "\n").encode()
             )
             process.stdin.flush()
         except OSError:

@@ -52,6 +52,16 @@ class Channel:
         seq = acknowledgement.get("seq")
         return seq if isinstance(seq, int) else None
 
+    def before_execute(self, ident, arguments):
+        self._out.write(json.dumps({"benchmark_fault": {
+            "capability_id": ident, "arguments_sha256": policies.digest(arguments),
+        }}) + "\n")
+        self._out.flush()
+        reply = self.read()
+        if type(reply.get("inject_fault")) is not bool:
+            raise RuntimeError("execution admission was not acknowledged")
+        return reply["inject_fault"]
+
     def model_input(self, payload):
         self._out.write(json.dumps({"model_input": payload}) + "\n")
         self._out.flush()
@@ -273,6 +283,7 @@ def main() -> int:
         registry=Registry(release, capabilities),
         admission=lambda: channel.denial,
         sandbox=sandbox,
+        before_execute=channel.before_execute if spec.get("benchmark_fault") else None,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(

@@ -21,6 +21,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from . import faults
 from .container import WORKSPACE_MOUNT, Backend, ContainerUnavailable, container_name
 from .paths import minimal_environment
 from .registry import META_SCHEMAS, Registry
@@ -73,6 +74,7 @@ class ToolHost:
         registry: Registry | None = None,
         admission=None,
         sandbox: Sandbox | None = None,
+        before_execute=None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -85,6 +87,7 @@ class ToolHost:
         self.registry = registry
         self.admission = admission
         self.sandbox = sandbox
+        self.before_execute = before_execute
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -196,6 +199,9 @@ class ToolHost:
                 "error": f"unsupported_interface: '{invocation['interface']}'",
             }
 
+        if self.before_execute and self.before_execute(capability_id, arguments):
+            # Permission/schema/interface checks precede exposure; no code has run.
+            return json.loads(json.dumps(faults.OUTCOME))
         extra = {}
         filesystem = manifest["permissions"]["filesystem"]
         # The workspace is the only place a capability is ever told about.

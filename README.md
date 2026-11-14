@@ -232,6 +232,36 @@ and works:
 - `ols verify <archive>` — checks an archive is complete and untampered using
   only what is inside it.
 
+**S007d benchmark tooling is implemented.**
+`python -m open_lab_simulation.benchmark run <manifest> --registration <commit>`
+executes at most four scheduled cells per invocation (override `--max-cells`).
+Evaluation manifests require all 24 cells: seeds 41/42/43, two replicates and
+conditions A/B/C/D, in reproducibly randomised balanced blocks. Pilot seeds and
+roles are separate. Prompt/profile/config/source fingerprints are pinned before
+launch; source fingerprints normalise Python CRLF/LF, matching Git's text rules.
+A verified OS writer lock serialises runners. The append-only, fsynced ledger
+records starts, finished cells, failed launches and reconciled interruptions.
+Started cells are never silently rerun or replaced. Results stay outside the
+agent workspace under the data root's `campaigns/<id>/` directory.
+
+The D arm injects one explicitly marked transient failure at the first actual
+capability execution after permission/schema/interface checks and before side
+effects. Invalid/denied calls and discovery do not consume it; demonstrations
+can. Supervisor injection records and delivered tool results distinguish the
+benchmark fault from a real capability failure. Exposure requires a subsequent
+recorded model input containing the failure. No instruction/tool suggestion is
+added, no privilege is granted and restarts cannot replenish the injection.
+
+`python -m open_lab_simulation.benchmark report <manifest>` verifies archives,
+conditions, fresh initial workspace/memory and source-bound investigator
+annotations. Metrics distinguish observations, agent claims and investigator
+assessments. Annotations live under `campaigns/<id>/annotations/`, outside raw
+archives, and bind the exact event-log hash. Pilot reports are `NOT_SCORED`;
+evaluation reports separately return GO/NO_GO/INCONCLUSIVE. Unknown settings and
+usage, resource exhaustion, failed controls, unexposed faults and censored runs
+remain visible. No autonomy score or internal-motivation inference is produced.
+See the Builder's S007d preregistration/rubric/report for the scientific scope.
+
 **S007c runtime policies are implemented.** The optional
 `extensions.runtime_policy` selects `legacy-immediate-v1` (default) or
 `quiet-until-deadline-v1`. Quiet stops model calls after a configured consecutive
