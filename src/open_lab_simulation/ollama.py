@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from .model import is_loopback
+from .model import ModelError, NoRedirect, is_loopback
 
 
 class OllamaError(Exception):
@@ -34,11 +34,11 @@ def _request(base: str, path: str, body: dict[str, Any] | None = None, timeout: 
         headers={"Content-Type": "application/json"},
         method="GET" if body is None else "POST",
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     try:
         with opener.open(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, ModelError) as error:
         raise OllamaError(f"model server request failed ({type(error).__name__})") from None
 
 

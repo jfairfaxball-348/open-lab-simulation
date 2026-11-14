@@ -232,6 +232,37 @@ and works:
 - `ols verify <archive>` — checks an archive is complete and untampered using
   only what is inside it.
 
+**S007a local gateway is implemented.** Optional
+`extensions.model_catalog` selects one approved model-provider document outside
+the world. It contains `document` and `sha256`: the SHA-256 of the document's
+canonical JSON (sorted keys, compact separators, literal Unicode, UTF-8, no
+trailing newline). Both paired configurations embed the same Builder-owned
+catalog; only experiment identity and the orchestrator selection differ.
+Bundled manifests remain the default. Catalog selection grants no permissions.
+
+```bash
+uv run ols run experiments/s007a-swap-llama.json
+uv run ols run experiments/s007a-swap-granite.json
+```
+
+The gateway accepts local Ollama and loopback chat-completions servers
+(`openai_compatible` or `llama_cpp`); it refuses credentials in URLs, redirects,
+external hosts, unavailable models, duplicate ids and mismatched catalog/model
+digests. Generic servers must list the exact model through `/models`; their
+weight identity is explicitly unknown, so checkpoint resume is refused without
+an attestable weight digest. Ollama continues using its native identity API.
+No real generic server was tested; adapter tests use a fake.
+
+`model.json` freezes provider/model manifests, adapter version, requested
+sampling, client context guard and repair policy. Effective sampling, context
+and offload are explicitly unknown rather than inferred from the manifest.
+`model-catalog.json` preserves canonical catalog bytes. A hash in the launch
+state event binds model provenance; `ols verify` checks both files. Resume
+revalidates pinned catalogs/settings and model identity. Old archives remain
+verifiable. The default output request is now explicitly 512 tokens when omitted.
+Server resources stay outside runtime job limits. Specialist consultation and
+GPU leasing remain S007e; no hosted provider is enabled.
+
 What does **not** exist yet:
 
 - **No experiment has been run.** One small model (`llama3.2:3b`) has driven
@@ -243,8 +274,8 @@ What does **not** exist yet:
   before 0.3.0 are refused because their contracts cannot record this.
 - The scripted stand-in remains for tests: it replays fixed replies and its
   events carry the model id `scripted`. The test suite never calls a model.
-- One model per run, one provider kind (Ollama on this machine). The context
-  window is whatever the server uses by default.
+- One orchestrator per run; local provider routing is implemented in S007a.
+  The context window remains server-controlled and must be measured separately.
 - The *container tier* (S006c) exists for Windows hosts only: a world with
   `minimum_tier: container` runs every capability call in a fresh rootless
   Podman container in WSL 2 (pinned base image, verified world read-only, the

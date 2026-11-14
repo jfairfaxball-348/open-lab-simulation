@@ -59,7 +59,9 @@ class FakeServer:
                 self.wfile.write(data)
 
             def do_GET(self):  # noqa: N802
-                if self.path == "/api/tags":
+                if self.path == "/v1/models":
+                    self._send(200, {"data": [{"id": m["name"]} for m in outer.models]})
+                elif self.path == "/api/tags":
                     self._send(200, {"models": outer.models})
                 elif self.path == "/api/version":
                     self._send(200, {"version": "0.0.0-fake"})
@@ -598,3 +600,121 @@ def test_resume_refuses_changed_model_digest_before_restoring_anything(
         resume_experiment(paused.archive, model_root)
     assert (paused.archive / "events.jsonl").read_bytes() == before
     assert not list(paused.workspace.parent.glob(paused.run_id + ".before-resume-*"))
+
+
+# S007a: a catalog is supervisor configuration, independent of world bytes.
+def catalog_selection(release, server, *, kind="ollama"):
+    from open_lab_simulation.contracts import canonical_json, sha256_text
+    document = json.loads((release / "models" / "ollama-local.json").read_text())
+    document["provider"]["api"]["base_url"] = server.base + "/v1"
+    document["provider"]["kind"] = kind
+    document["models"] = [document["models"][0]]
+    if kind != "ollama":
+        document["models"][0].pop("digest")
+    return {"document": document, "sha256": sha256_text(canonical_json(document))}
+
+
+@pytest.mark.parametrize("kind", ["ollama", "openai_compatible", "llama_cpp"])
+def test_catalog_routes_without_world_edits(root, release, server, model_config, kind):
+    from open_lab_simulation.contracts import canonical_json
+    original = tree(release)
+    selected = catalog_selection(release, server, kind=kind)
+    result = run_experiment(model_config(extensions={"model_catalog": selected}), root)
+    assert tree(release) == original
+    assert not verify_archive(result.archive)
+    model = json.loads((result.archive / "model.json").read_text())
+    assert model["provider_kind"] == kind
+    assert model["settings"]["effective_context_tokens"] is None
+    assert model["settings"]["sampling_effective"] is None
+    assert (result.archive / "model-catalog.json").read_bytes() == canonical_json(
+        selected["document"]).encode()
+    assert model["identity"].get("digest") == (DIGEST if kind == "ollama" else None)
+    (result.archive / "model.json").write_text("{}")
+    assert any("provenance" in p for p in verify_archive(result.archive))
+    if kind != "ollama":
+        with pytest.raises(LaunchError, match="recovery requires an attestable"):
+            run_experiment(model_config(checkpointing={}, extensions={
+                "model_catalog": selected, "recovery": {"max_restarts": 1},
+            }), root)
+
+
+@pytest.mark.parametrize("mutation,match", [
+    ("pin", "catalog digest"), ("digest", "model digest"),
+    ("missing", "not present"), ("duplicate", "duplicate"),
+    ("unavailable", "approved as available"), ("external", "loopback"),
+    ("schema", "invalid model catalog"),
+])
+def test_catalog_refusals(root, release, server, model_config, mutation, match):
+    from open_lab_simulation.contracts import canonical_json, sha256_text
+    selected = catalog_selection(release, server)
+    document = selected["document"]
+    if mutation == "digest":
+        document["models"][0]["digest"] = "b" * 64
+    elif mutation == "missing":
+        document["models"][0]["provider_ref"] = "absent"
+    elif mutation == "duplicate":
+        document["models"].append(document["models"][0])
+    elif mutation == "unavailable":
+        document["models"][0]["status"] = "requires_download"
+    elif mutation == "external":
+        document["provider"]["api"]["base_url"] = "https://example.com/v1"
+    elif mutation == "schema":
+        document["provider"]["typo"] = True
+    selected["sha256"] = sha256_text(canonical_json(document))
+    if mutation == "pin":
+        selected["sha256"] = "0" * 64
+    with pytest.raises(LaunchError, match=match):
+        run_experiment(model_config(extensions={"model_catalog": selected}), root)
+    assert not server.requests
+
+
+def test_catalog_does_not_grant_tools_or_models(root, release, server, model_config):
+    selected = catalog_selection(release, server)
+    with pytest.raises(LaunchError, match="permissions.models"):
+        run_experiment(model_config(extensions={"model_catalog": selected},
+            permissions={"network": "loopback", "models": []}), root)
+    server.replies = [{"content": "", "tool_calls": [invoke_call("workspace.write", {
+        "path": "denied.txt", "content": "no"})]}]
+    result = run_experiment(model_config(extensions={"model_catalog": selected},
+        permissions={"network": "loopback", "models": ["orchestrator-small"],
+                     "filesystem": "none"}), root)
+    assert not (result.workspace / "denied.txt").exists()
+    assert any(r["status"] == "denied" for r in tool_results(events_of(result.archive)))
+    assert not verify_archive(result.archive)
+
+
+def test_catalog_tampering_and_resume(root, release, server, model_config):
+    selected = catalog_selection(release, server)
+    result = run_experiment(model_config(extensions={"model_catalog": selected},
+        checkpointing={"interval_s": 1, "keep_last": 3}), root, pause_after_steps=1)
+    assert not verify_archive(result.archive)
+    resumed = resume_experiment(result.archive, root)
+    assert not verify_archive(resumed.archive)
+    (resumed.archive / "model-catalog.json").write_text("{}")
+    assert any("catalog" in p for p in verify_archive(resumed.archive))
+
+
+def test_local_redirects_are_refused(server):
+    from open_lab_simulation.model import NoRedirect, is_loopback
+    assert not is_loopback("http://user:secret@127.0.0.1/v1")
+    with pytest.raises(ModelError, match="redirects"):
+        NoRedirect().redirect_request(None, None, 302, "", {}, "https://example.com")
+
+
+@pytest.mark.parametrize("change", ["sampling", "catalog"])
+def test_resume_refuses_changed_gateway_settings(root, release, server, model_config, change):
+    selected = catalog_selection(release, server)
+    result = run_experiment(model_config(extensions={"model_catalog": selected},
+        checkpointing={"interval_s": 1, "keep_last": 3}), root, pause_after_steps=1)
+    path = result.archive / "experiment.json"
+    config = json.loads(path.read_text())
+    if change == "sampling":
+        config["orchestrator"]["sampling"]["temperature"] = 0.5
+    else:
+        from open_lab_simulation.contracts import canonical_json, sha256_text
+        selected["document"]["models"][0]["context_window_tokens"] = 2048
+        selected["sha256"] = sha256_text(canonical_json(selected["document"]))
+        config["extensions"]["model_catalog"] = selected
+    path.write_text(json.dumps(config))
+    with pytest.raises(LaunchError):
+        resume_experiment(result.archive, root)

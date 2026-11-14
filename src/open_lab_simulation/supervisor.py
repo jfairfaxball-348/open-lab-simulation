@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, container, ollama, recovery, resources
+from . import __version__, container, gateway, ollama, recovery, resources
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -32,7 +32,7 @@ from .checkpoints import (
     run_lock,
     write_checkpoint,
 )
-from .model import SCRIPTED_MODEL_ID, is_loopback
+from .model import SCRIPTED_MODEL_ID
 from .paths import data_root, minimal_environment
 from .proctree import ProcessTree
 from .recorder import Recorder, RecordError, utc_now
@@ -168,10 +168,14 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
             "replies": extension["replies"],
         }
 
+    try:
+        providers, selected_catalog = gateway.catalog(config, world)
+    except ValueError as error:
+        raise LaunchError(str(error)) from None
     wanted_provider = orchestrator.get("provider_id")
     found = [
         (provider_id, document["provider"], model)
-        for provider_id, document in world.providers.items()
+        for provider_id, document in providers.items()
         if wanted_provider in (None, provider_id)
         for model in document["models"]
         if model["id"] == model_id
@@ -180,10 +184,6 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
         raise LaunchError(f"the world does not define exactly one model '{model_id}'")
     provider_id, provider, model = found[0]
     api = provider["api"]
-    if provider["kind"] != "ollama" or api["protocol"] != "openai_chat_completions":
-        raise LaunchError("only Ollama providers with the chat-completions API are supported")
-    if provider["locality"] != "local" or not is_loopback(api.get("base_url", "")):
-        raise LaunchError("the model server must be on this machine")
     if "orchestrator" not in model["roles"]:
         raise LaunchError(f"model '{model_id}' is not an orchestrator")
     # Authority comes from the experiment: it must grant the model and the loopback call.
@@ -195,12 +195,14 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
         )
     try:
         settings = recovery.policy(config)
-        identity = ollama.identify(
-            ollama.native_base(api["base_url"]), model["provider_ref"],
+        identity = gateway.identify(
+            provider, model["provider_ref"],
             timeout=settings["health_check_timeout_s"] if settings else 30,
         )
-    except ollama.OllamaError as error:
+    except (ollama.OllamaError, ValueError) as error:
         raise LaunchError(str(error)) from None
+    if settings and not identity.get("digest"):
+        raise LaunchError("model recovery requires an attestable model digest")
     resolved = {
         "kind": "openai_chat",
         "model_id": model_id,
@@ -211,6 +213,12 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
         "sampling": orchestrator.get("sampling", {}),
         "identity": identity,
     }
+    try:
+        resolved.update(gateway.provenance(
+            provider, model, resolved["sampling"], identity, selected_catalog,
+        ))
+    except ValueError as error:
+        raise LaunchError(str(error)) from None
     if "context_window_tokens" in model:
         resolved["context_tokens"] = model["context_window_tokens"]
     return resolved
@@ -344,6 +352,10 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     if world.digest != summary["world"]["content_digest"]:
         raise LaunchError("resuming requires the original world digest")
     prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
+    if model["real_model"] and not model.get("identity", {}).get("digest"):
+        raise LaunchError("resuming requires an attestable model digest")
+    if prior_model.get("adapter") and model != prior_model:
+        raise LaunchError("resuming requires the original model digest, catalog and settings")
     if model.get("identity", {}).get("digest") != prior_model.get("identity", {}).get(
         "digest"
     ):
@@ -517,6 +529,11 @@ def _run_prepared(
         (archive / "experiment.json").write_bytes(raw)
         shutil.copyfile(world.directory / "world-release.json", archive / "world-release.json")
         shutil.copytree(world.directory / "contracts", archive / "contracts")
+        if model.get("catalog"):
+            (archive / "model-catalog.json").write_text(
+                gateway.canonical_json(model["catalog"]["document"]),
+                encoding="utf-8", newline="\n",
+            )
         described = {key: value for key, value in model.items() if key != "replies"}
         (archive / "model.json").write_text(
             json.dumps(described, indent=2) + "\n", encoding="utf-8", newline="\n"
@@ -548,7 +565,11 @@ def _run_prepared(
             recorder=by,
             type="run.state_changed",
             actor=system if by == "experiment_manager" else supervisor,
-            payload={"from": state, "to": to, "reason": reason},
+            payload={"from": state, "to": to, "reason": reason,
+                     **({"extensions": {"stage": "model_provenance",
+                                         "model_sha256": gateway.sha256_text(
+                                             gateway.canonical_json(model))}}
+                        if to == "starting" and model.get("adapter") else {})},
         )
         state = to
 

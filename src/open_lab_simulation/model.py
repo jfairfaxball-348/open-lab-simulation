@@ -99,8 +99,19 @@ class ScriptedModel:
 
 # --- OpenAI-compatible chat model ---------------------------------------------
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ModelError("model server redirects are refused")
+
+
 def is_loopback(url: str) -> bool:
-    return urlsplit(url).hostname in ("127.0.0.1", "localhost", "::1")
+    try:
+        parts = urlsplit(url)
+        return (parts.scheme in {"http", "https"} and parts.hostname in
+                ("127.0.0.1", "localhost", "::1") and not parts.username
+                and not parts.password and not parts.query and not parts.fragment)
+    except ValueError:
+        return False
 
 
 def function_name(capability_id: str) -> str:
@@ -303,7 +314,7 @@ class OpenAIChatModel:
             headers={"Content-Type": "application/json"}, method="POST",
         )
         # No proxy: the request must go to this machine and nowhere else.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         with opener.open(request, timeout=REQUEST_TIMEOUT_S) as response:
             return json.loads(response.read().decode("utf-8"))
 
@@ -319,6 +330,7 @@ class OpenAIChatModel:
         body: dict[str, Any] = {
             "model": self._provider_ref, "messages": messages, "tools": self._tools,
             "stream": False,
+            "max_tokens": self._sampling.get("max_output_tokens", DEFAULT_OUTPUT_TOKENS),
         }
         for ours, theirs in (("temperature", "temperature"), ("top_p", "top_p"),
                              ("seed", "seed"), ("max_output_tokens", "max_tokens")):

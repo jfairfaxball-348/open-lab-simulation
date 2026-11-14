@@ -1,0 +1,133 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.0.0",
+  "experiment_id": "s007a-swap-granite",
+  "title": "S007a paired local gateway engineering check",
+  "research_question": "Engineering acceptance only: can the existing local orchestrator discover, describe and invoke a tool without a capability catalogue in its initial prompt?",
+  "created_at": "2026-11-14T10:00:00Z",
+  "tags": [
+    "engineering-check",
+    "tool-use"
+  ],
+  "initial_prompt": "Discover a capability for the current UTC time and read its documentation. Then execute it. Put the discovered identifier in the top-level id field and the empty object {} in the top-level arguments field. These are sibling fields. The clock needs no input; utc is an output field. Report the returned timestamp.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.6.0",
+    "content_digest": "1ccc407cc300e7622bcca348ff22c5982bff5cf3a10559ee741304350e960da5"
+  },
+  "orchestrator": {
+    "provider_id": "approved-local",
+    "model_id": "swap-granite",
+    "sampling": {
+      "temperature": 0,
+      "seed": 901,
+      "max_output_tokens": 512
+    }
+  },
+  "limits": {
+    "wall_clock_s": 90,
+    "max_steps": 3
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "loopback",
+    "gpu": false,
+    "models": [
+      "swap-llama",
+      "swap-granite"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "model_catalog": {
+      "document": {
+        "schema": "open-lab/model-provider",
+        "schema_version": "1.0.0",
+        "provider": {
+          "id": "approved-local",
+          "name": "Ollama on the host",
+          "kind": "ollama",
+          "locality": "local",
+          "api": {
+            "protocol": "openai_chat_completions",
+            "base_url": "http://127.0.0.1:11434/v1",
+            "supports_explicit_unload": true
+          },
+          "version": "0.40.16"
+        },
+        "models": [
+          {
+            "id": "swap-llama",
+            "provider_ref": "llama3.2:3b",
+            "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+            "family": "llama",
+            "parameter_count": "3.2B",
+            "quantization": "Q4_K_M",
+            "roles": [
+              "orchestrator",
+              "text_generation"
+            ],
+            "modalities": {
+              "input": [
+                "text"
+              ],
+              "output": [
+                "text"
+              ]
+            },
+            "context_window_tokens": 4096,
+            "features": {
+              "tool_calling": true,
+              "streaming": true
+            },
+            "footprint": {
+              "disk_mb": 1926,
+              "ram_mb": 561,
+              "vram_mb": 2239,
+              "measured": true
+            },
+            "status": "available",
+            "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model': 2800 MB loaded, of which 2239 MB on the GPU and 561 MB in system RAM; cold load 33 s, warm load 3 s; about 62 output tokens per second. The context window is the server's default as reported by Ollama, not the model's maximum. Tool calling was checked in one short prompted run, which is evidence that it works, not that it is reliable."
+          },
+          {
+            "id": "swap-granite",
+            "provider_ref": "granite4.1:3b",
+            "digest": "6fd349357287c7ffc9e38189a93b48ea175d24fc566b38f09cfc564fb7f303eb",
+            "family": "granite",
+            "parameter_count": "3.4B",
+            "quantization": "Q4_K_M",
+            "license": "Apache-2.0",
+            "roles": [
+              "orchestrator",
+              "text_generation"
+            ],
+            "modalities": {
+              "input": [
+                "text"
+              ],
+              "output": [
+                "text"
+              ]
+            },
+            "context_window_tokens": 4096,
+            "features": {
+              "tool_calling": true,
+              "streaming": true
+            },
+            "footprint": {
+              "disk_mb": 2002,
+              "ram_mb": 392,
+              "vram_mb": 2245,
+              "measured": true
+            },
+            "status": "available",
+            "notes": "Measured on the development machine (4 GB GPU) on 2026-11-14 with 'ols measure-model', warm: 2637 MB loaded, of which 2245 MB on the GPU and 392 MB in system RAM; load 3.0 s warm (11.6 s cold); about 58 output tokens per second warm (the cold measurement, 4 tokens per second, was taken while the model was still being paged in). Candidate compared in S003c."
+          }
+        ]
+      },
+      "sha256": "5f2c4466908c2c7133ad1dff2e26167965809966085eb7986886d144987ebf12"
+    }
+  }
+}

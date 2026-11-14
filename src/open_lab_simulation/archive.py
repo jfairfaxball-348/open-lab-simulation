@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .artifacts import read_index
 from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
-from .contracts import Contracts, validate_event_stream
+from .contracts import Contracts, canonical_json, sha256_text, validate_event_stream
 from .world import file_sha256
 
 
@@ -44,6 +44,25 @@ def verify_archive(
         return [*problems, "the event log is empty"]
 
     events = [json.loads(line) for line in lines]
+    pins = [e["payload"].get("extensions", {}).get("model_sha256") for e in events
+            if e["type"] == "run.state_changed"
+            and e["payload"].get("extensions", {}).get("stage") == "model_provenance"]
+    if pins:
+        try:
+            model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
+            if pins != [sha256_text(canonical_json(model))]:
+                problems.append("model provenance differs from its recorded digest")
+            selected = config.get("extensions", {}).get("model_catalog")
+            if model.get("catalog") != selected:
+                problems.append("model catalog differs from experiment")
+            if selected:
+                raw_catalog = (archive / "model-catalog.json").read_bytes()
+                expected = canonical_json(selected["document"])
+                if (raw_catalog != expected.encode("utf-8")
+                        or sha256_text(expected) != selected["sha256"]):
+                    problems.append("model catalog differs from its pin")
+        except (OSError, ValueError, KeyError, TypeError):
+            problems.append("model provenance is missing or unreadable")
     last = next((e for e in reversed(events) if e["type"] == "run.state_changed"), events[-1])
     if summary is not None and (
         last["type"] != "run.state_changed" or last["payload"].get("to") != summary["final_state"]
