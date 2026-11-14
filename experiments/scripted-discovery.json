@@ -12,7 +12,7 @@
   "initial_prompt": "Explore the world and keep a short note about what you find.",
   "world": {
     "world_id": "minimal",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "orchestrator": {
     "provider_id": "scripted",

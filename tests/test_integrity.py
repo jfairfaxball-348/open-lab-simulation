@@ -42,7 +42,8 @@ def test_our_digest_agrees_with_the_builder(tmp_path):
     world = load_world(FIXTURE_WORLD)
     assert compute_content_digest(FIXTURE_WORLD, world.manifest) == world.digest
     assert sorted(world.capabilities) == [
-        "math.evaluate", "text.stats", "time.now", "workspace.list", "workspace.write"
+        "math.evaluate", "memory.list", "memory.search", "memory.write",
+        "text.stats", "time.now", "workspace.list", "workspace.write"
     ]
 
 

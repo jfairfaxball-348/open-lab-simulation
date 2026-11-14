@@ -10,11 +10,12 @@ import json
 from pathlib import Path
 
 from .artifacts import read_index
+from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
 from .contracts import Contracts, validate_event_stream
 from .world import file_sha256
 
 
-def verify_archive(archive: Path) -> list[str]:
+def verify_archive(archive: Path, *, checkpoints: bool = True) -> list[str]:
     """Problems found in a run archive; an empty list means it is intact."""
     try:
         contracts = Contracts(archive / "contracts")
@@ -28,6 +29,8 @@ def verify_archive(archive: Path) -> list[str]:
     problems = validate_event_stream(contracts, lines)
     problems += [f"experiment.json: {p}" for p in contracts.validate(config, "experiment-config")]
     problems += [f"world-release.json: {p}" for p in contracts.validate(world, "world-release")]
+    if problems:
+        return problems
     if not lines:
         return [*problems, "the event log is empty"]
 
@@ -58,4 +61,16 @@ def verify_archive(archive: Path) -> list[str]:
                 problems.append(f"{label}: preserved content is missing")
             elif file_sha256(stored) != metadata["sha256"]:
                 problems.append(f"{label}: preserved content does not match its digest")
+    if checkpoints:
+        pruned = pruned_ids(events)
+        for event in checkpoint_events(events):
+            ident = event["payload"]["checkpoint_id"]
+            if ident in pruned:
+                continue
+            try:
+                metadata, _ = read_checkpoint(archive, event, events, contracts)
+                if metadata["extensions"]["world_digest"] != world["content_digest"]["value"]:
+                    problems.append(f"{ident}: checkpoint world differs")
+            except CheckpointError as error:
+                problems.append(str(error))
     return problems

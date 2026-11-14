@@ -352,7 +352,7 @@ def test_draft_and_missing_worlds_are_refused(root, release, make_config):
         ({"orchestrator": {"model_id": "orchestrator-small"}}, "does not define exactly one model"),
         ({"extensions": {"scripted_model": "no replies"}}, "needs extensions.scripted_model"),
         ({"termination": {"on_deadline": "checkpoint_then_stop"}}, "checkpointing"),
-        ({"checkpointing": {"interval_s": 60}}, "checkpointing"),
+        ({"checkpointing": {"keep_last": 0}}, "invalid experiment configuration"),
         ({"termination": {"notify_agent_before_s": 10}}, "deadline notices"),
         ({"permissions": {"subprocess": True}}, "container isolation tier"),
         ({"capabilities": {"agent_created_tools": True}}, "container isolation tier"),

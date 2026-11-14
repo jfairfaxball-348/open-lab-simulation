@@ -2,10 +2,10 @@
   "schema": "open-lab/world-release",
   "schema_version": "1.0.0",
   "world_id": "minimal",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "name": "Minimal world",
-  "description": "Five simple capabilities: text statistics, exact arithmetic, workspace text writing, directory listing and UTC time, with a deterministic registry and generated documentation.",
-  "created_at": "2026-11-14T09:36:32Z",
+  "description": "Eight simple capabilities, including agent-owned SQLite memory, with a generated discovery registry.",
+  "created_at": "2026-11-14T10:11:50Z",
   "status": "validated",
   "builder": {
     "version": "0.1.0"
@@ -17,7 +17,7 @@
     "experiment-config": "1.1.0",
     "observation-event": "1.2.0",
     "artifact-metadata": "1.0.0",
-    "checkpoint-metadata": "1.0.0",
+    "checkpoint-metadata": "1.0.1",
     "common": "1.0.0"
   },
   "capabilities": [
@@ -26,6 +26,24 @@
       "version": "0.1.0",
       "manifest_path": "capabilities/math.evaluate/capability.json",
       "sha256": "1ac12746bfc71a5d25b9e8a21e55e6bcad6f0b8d2cf18482957e27ab7049c81d"
+    },
+    {
+      "id": "memory.list",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.list/capability.json",
+      "sha256": "7ae0579776797ac98c02b63c1781dc5e7eca232d454643ea3195dd0968461067"
+    },
+    {
+      "id": "memory.search",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.search/capability.json",
+      "sha256": "f01849eb29a65af4032a6b3d73c6501a9a672294c63d34b6fcb34ffb7285b9d3"
+    },
+    {
+      "id": "memory.write",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.write/capability.json",
+      "sha256": "c4c7163f96640cca5418c1689ebe1404c482c1c93b73e33c69f3dfa8073499ff"
     },
     {
       "id": "text.stats",
@@ -85,7 +103,7 @@
     "subprocess": false,
     "gpu": true
   },
-  "notes": "0.5.0 bundles observation-event 1.2.0 so the Simulation can record its generic discovery preamble (S005b). Capabilities, registry format and model selection are unchanged from 0.4.0.",
+  "notes": "S006a adds memory.write, memory.search and memory.list, and checkpoint-metadata 1.0.1 clarifies append-only rollback/replay on resume. Model choice is unchanged.",
   "extensions": {
     "files": [
       {
@@ -95,6 +113,30 @@
       {
         "path": "capabilities/math.evaluate/math_evaluate.py",
         "sha256": "ba9fd2f5c8d615948c0eb411b592b0f9521989ceb074cf8a07439b42f4676df1"
+      },
+      {
+        "path": "capabilities/memory.list/capability.json",
+        "sha256": "7ae0579776797ac98c02b63c1781dc5e7eca232d454643ea3195dd0968461067"
+      },
+      {
+        "path": "capabilities/memory.list/implementation.py",
+        "sha256": "9d3ccbee4026d6a24d0418ff338065e763dc2d5a35f384097ab84adb05035392"
+      },
+      {
+        "path": "capabilities/memory.search/capability.json",
+        "sha256": "f01849eb29a65af4032a6b3d73c6501a9a672294c63d34b6fcb34ffb7285b9d3"
+      },
+      {
+        "path": "capabilities/memory.search/implementation.py",
+        "sha256": "1ac94e8f452b011ba516a82f3254288d8179f4a1ee53946cea7fd8fde554551c"
+      },
+      {
+        "path": "capabilities/memory.write/capability.json",
+        "sha256": "c4c7163f96640cca5418c1689ebe1404c482c1c93b73e33c69f3dfa8073499ff"
+      },
+      {
+        "path": "capabilities/memory.write/implementation.py",
+        "sha256": "2ebf722d915e2cdba94d77af0cafe08c56ce6545b6f44be8ac86fe5cbc8b3547"
       },
       {
         "path": "capabilities/text.stats/capability.json",
@@ -138,7 +180,7 @@
       },
       {
         "path": "contracts/v1/checkpoint-metadata.schema.json",
-        "sha256": "97929f3aa76ed42ac82da0e91256bd627b433fe6466d52b48bc3c915e32a8154"
+        "sha256": "82fa3cc03b9f9f5e26809724d28eb966dd340bb36e52ac4fe510aa14d915f9ea"
       },
       {
         "path": "contracts/v1/common.schema.json",
@@ -169,6 +211,18 @@
         "sha256": "22bf4503acd8b8a22a6989a3f7a95ebf9d61705bd39b2d22f806ce88541792e4"
       },
       {
+        "path": "registry/docs/memory.list.txt",
+        "sha256": "e8f202f3a3bc9f76aa593212256de3e305b943115476cf1eea7ae19bc9c18674"
+      },
+      {
+        "path": "registry/docs/memory.search.txt",
+        "sha256": "88bec33b14921c8810ed69ae4edcc3e42cdac5e7b0e21295bdfe6d4a3cce0ece"
+      },
+      {
+        "path": "registry/docs/memory.write.txt",
+        "sha256": "9fe526d0a916c859b7e00c4f3f316aa6c024c9e1f1f54c575b6f2743c701db02"
+      },
+      {
         "path": "registry/docs/text.stats.txt",
         "sha256": "cde3c9fb117ff99dc808a0d19e4560ea0f39541e7db437076b3355c54b5484b2"
       },
@@ -186,12 +240,12 @@
       },
       {
         "path": "registry/index.json",
-        "sha256": "6010c82e55b2fdcf98415fe5ab8c25980c3f7b9250ae039d67d0d89206677e57"
+        "sha256": "d21d07a4e0d183ec7d16857d8287af2f6d42857b977b0d0967195c79108b97c6"
       }
     ]
   },
   "content_digest": {
     "algorithm": "sha256",
-    "value": "21474d3b0b84a6bb0829a08e9c5fd18fb983292749c0533b8afd08f71cfbff0c"
+    "value": "1ccc407cc300e7622bcca348ff22c5982bff5cf3a10559ee741304350e960da5"
   }
 }

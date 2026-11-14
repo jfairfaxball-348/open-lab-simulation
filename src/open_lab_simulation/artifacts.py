@@ -40,6 +40,7 @@ class WorkspaceScanner:
         contracts: Contracts,
         actor: dict[str, Any],
         max_preserved_bytes: int = MAX_PRESERVED_BYTES,
+        resume: bool = False,
     ):
         self.workspace = workspace
         self.archive = archive
@@ -51,6 +52,23 @@ class WorkspaceScanner:
         self._next_id = 1
         self.versions = 0
         (archive / "artifacts").mkdir(exist_ok=True)
+        if resume:
+            metadata = read_index(archive)
+            self.versions = len(metadata)
+            self._next_id = (
+                max((int(m["artifact_id"].split("-")[-1]) for m in metadata), default=0) + 1
+            )
+            records = {m["artifact_id"]: m for m in metadata}
+            for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                payload = event["payload"]
+                if event["type"] in ("artifact.created", "artifact.modified"):
+                    m = records[payload["artifact_id"]]
+                    self._known[payload["path"]] = _Known(
+                        m["artifact_id"], m["sha256"], m["revision"], (-1, -1)
+                    )
+                elif event["type"] == "artifact.deleted":
+                    self._known.pop(payload["path"], None)
 
     def _files(self) -> dict[str, Path]:
         found = {}
@@ -118,8 +136,10 @@ class WorkspaceScanner:
                 type="artifact.modified" if known else "artifact.created",
                 actor=self.actor,
                 payload={
-                    "artifact_id": artifact_id, "path": relative,
-                    "sha256": sha256, "size_bytes": size,
+                    "artifact_id": artifact_id,
+                    "path": relative,
+                    "sha256": sha256,
+                    "size_bytes": size,
                 },
             )
             metadata: dict[str, Any] = {
@@ -158,7 +178,9 @@ class WorkspaceScanner:
         for relative in sorted(self._known.keys() - files.keys()):
             known = self._known.pop(relative)
             self.recorder.record(
-                recorder="supervisor", type="artifact.deleted", actor=self.actor,
+                recorder="supervisor",
+                type="artifact.deleted",
+                actor=self.actor,
                 payload={"artifact_id": known.artifact_id, "path": relative},
             )
             events += 1

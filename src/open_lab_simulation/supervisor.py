@@ -22,7 +22,16 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, ollama
+from .archive import verify_archive
 from .artifacts import WorkspaceScanner
+from .checkpoints import (
+    CheckpointError,
+    CheckpointTimeout,
+    latest_checkpoint,
+    restore_workspace,
+    run_lock,
+    write_checkpoint,
+)
 from .model import SCRIPTED_MODEL_ID, is_loopback
 from .paths import data_root, minimal_environment
 from .proctree import ProcessTree
@@ -67,16 +76,26 @@ class RunResult:
 
 def _unsupported(config: dict[str, Any], world: World) -> str | None:
     """Things the contracts allow but this runtime cannot yet honour. Refuse, never pretend."""
-    if config["termination"]["on_deadline"] != "hard_stop" or "checkpointing" in config:
-        return "checkpointing is not implemented; use termination.on_deadline 'hard_stop'"
+    if config["termination"]["on_deadline"] != "hard_stop":
+        return "cooperative deadline checkpointing is not implemented; use hard_stop"
     if "notify_agent_before_s" in config["termination"]:
         return "deadline notices are not implemented"
     if continuation_message(config, world) is None:
-        return ("the world's contracts predate the continuation message (observation-event "
-                "1.1.0, experiment-config 1.1.0); rebuild the world with current contracts")
+        return (
+            "the world's contracts predate the continuation message (observation-event "
+            "1.1.0, experiment-config 1.1.0); rebuild the world with current contracts"
+        )
     kinds = world.contracts.schemas["observation-event"]["allOf"]
-    if not any("preamble" in rule.get("then", {}).get("properties", {}).get("payload", {}).get(
-        "properties", {}).get("kind", {}).get("enum", []) for rule in kinds):
+    if not any(
+        "preamble"
+        in rule.get("then", {})
+        .get("properties", {})
+        .get("payload", {})
+        .get("properties", {})
+        .get("kind", {})
+        .get("enum", [])
+        for rule in kinds
+    ):
         return "the world's contracts cannot record the discovery preamble; rebuild the world"
     if config["permissions"].get("subprocess") or config.get("capabilities", {}).get(
         "agent_created_tools"
@@ -101,7 +120,8 @@ def continuation_message(config: dict[str, Any], world: World) -> str | None:
         if "environment.message" not in events["properties"]["type"]["enum"]:
             return None
         default = world.contracts.schemas["experiment-config"]["properties"]["continuation"][
-            "properties"]["message"]["default"]
+            "properties"
+        ]["message"]["default"]
     except KeyError:
         return None
     message = config.get("continuation", {}).get("message", default)
@@ -121,15 +141,20 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
         extension = config.get("extensions", {}).get("scripted_model")
         if not isinstance(extension, dict) or not isinstance(extension.get("replies"), list):
             raise LaunchError("the scripted model needs extensions.scripted_model.replies")
-        return {"kind": "scripted", "model_id": SCRIPTED_MODEL_ID, "real_model": False,
-                "replies": extension["replies"]}
+        return {
+            "kind": "scripted",
+            "model_id": SCRIPTED_MODEL_ID,
+            "real_model": False,
+            "replies": extension["replies"],
+        }
 
     wanted_provider = orchestrator.get("provider_id")
     found = [
         (provider_id, document["provider"], model)
         for provider_id, document in world.providers.items()
         if wanted_provider in (None, provider_id)
-        for model in document["models"] if model["id"] == model_id
+        for model in document["models"]
+        if model["id"] == model_id
     ]
     if len(found) != 1:
         raise LaunchError(f"the world does not define exactly one model '{model_id}'")
@@ -153,18 +178,21 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
     except ollama.OllamaError as error:
         raise LaunchError(str(error)) from None
     resolved = {
-        "kind": "openai_chat", "model_id": model_id, "provider_id": provider_id,
-        "real_model": True, "base_url": api["base_url"], "provider_ref": model["provider_ref"],
-        "sampling": orchestrator.get("sampling", {}), "identity": identity,
+        "kind": "openai_chat",
+        "model_id": model_id,
+        "provider_id": provider_id,
+        "real_model": True,
+        "base_url": api["base_url"],
+        "provider_ref": model["provider_ref"],
+        "sampling": orchestrator.get("sampling", {}),
+        "identity": identity,
     }
     if "context_window_tokens" in model:
         resolved["context_tokens"] = model["context_window_tokens"]
     return resolved
 
 
-def _prepare(
-    config_path: Path, root: Path
-) -> tuple[bytes, dict[str, Any], World, dict[str, Any]]:
+def _prepare(config_path: Path, root: Path) -> tuple[bytes, dict[str, Any], World, dict[str, Any]]:
     try:
         raw = config_path.read_bytes()
         config = json.loads(raw.decode("utf-8"))
@@ -173,8 +201,12 @@ def _prepare(
     except (OSError, ValueError, KeyError, TypeError):
         raise LaunchError("the experiment configuration cannot be read") from None
     # Checked before use in a path: the schema that would reject them lives in the world.
-    if not (isinstance(world_id, str) and _SLUG.match(world_id)
-            and isinstance(version, str) and _SEMVER.match(version)):
+    if not (
+        isinstance(world_id, str)
+        and _SLUG.match(world_id)
+        and isinstance(version, str)
+        and _SEMVER.match(version)
+    ):
         raise LaunchError("the experiment names no valid world")
     expected = named.get("content_digest") if isinstance(named, dict) else None
     try:
@@ -199,57 +231,197 @@ def _new_run_id() -> str:
     return f"run-{stamp}-{secrets.token_hex(3)}"
 
 
-def run_experiment(config_path: Path, root: Path | None = None) -> RunResult:
-    """Launch one run and supervise it to its end. Raises ``LaunchError`` if refused."""
-    root = root or data_root()
+def run_experiment(
+    config_path: Path, root: Path | None = None, *, pause_after_steps: int | None = None
+) -> RunResult:
+    """Launch one fresh run. Operator pauses require configured checkpointing."""
+    root = (root or data_root()).resolve()
     raw, config, world, model = _prepare(config_path, root)
-    experiment_id = config["experiment_id"]
+    if pause_after_steps is not None and (pause_after_steps < 1 or "checkpointing" not in config):
+        raise LaunchError("pausing needs checkpointing and a positive pause-after-steps value")
     run_id = _new_run_id()
-    archive = root / "runs" / experiment_id / run_id
+    archive = root / "runs" / config["experiment_id"] / run_id
     workspace = root / "workspaces" / run_id
-    # Neither may exist: two runs never share an archive or a workspace.
     archive.mkdir(parents=True)
     workspace.mkdir(parents=True)
-    (archive / "experiment.json").write_bytes(raw)
-    shutil.copyfile(world.directory / "world-release.json", archive / "world-release.json")
-    shutil.copytree(world.directory / "contracts", archive / "contracts")
-    # Exactly which model ran, as the server reported it at launch.
-    described = {key: value for key, value in model.items() if key != "replies"}
-    (archive / "model.json").write_text(
-        json.dumps(described, indent=2) + "\n", encoding="utf-8", newline="\n"
-    )
+    with run_lock(archive):
+        return _run_prepared(
+            raw, config, world, model, archive, workspace, pause_after_steps=pause_after_steps
+        )
 
-    recorder = Recorder(archive / "events.jsonl", world.contracts, experiment_id, run_id)
+
+def resume_experiment(
+    archive: Path, root: Path | None = None, *, pause_after_steps: int | None = None
+) -> RunResult:
+    """Append a segment to the same run; never remove or rewrite observations."""
+    root = (root or data_root()).resolve()
+    archive = archive.resolve()
+    if (
+        archive.parent.parent != root / "runs"
+        or not _SLUG.fullmatch(archive.name)
+        or not _SLUG.fullmatch(archive.parent.name)
+    ):
+        raise LaunchError("resume needs an archive beneath this data root's runs directory")
+    try:
+        with run_lock(archive):
+            problems = verify_archive(archive, checkpoints=False)
+            if problems:
+                raise LaunchError(f"run archive cannot be resumed: {problems[0]}")
+            summary = json.loads((archive / "summary.json").read_text(encoding="utf-8"))
+            if summary["final_state"] not in ("paused", "terminated", "failed"):
+                raise LaunchError("only a stopped, incomplete run can be resumed")
+            raw, config, world, model = _prepare(archive / "experiment.json", root)
+            if "checkpointing" not in config:
+                raise LaunchError("run did not enable checkpointing")
+            if world.digest != summary["world"]["content_digest"]:
+                raise LaunchError("resuming requires the original world digest")
+            prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
+            if model.get("identity", {}).get("digest") != prior_model.get("identity", {}).get(
+                "digest"
+            ):
+                raise LaunchError("resuming requires the original model digest")
+            events = [
+                json.loads(line)
+                for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            metadata, state, rejected = latest_checkpoint(archive, events, world.contracts)
+            if (
+                metadata["extensions"]["world_digest"] != world.digest
+                or metadata["orchestrator_model_id"] != model["model_id"]
+            ):
+                raise LaunchError("checkpoint world or model identity differs")
+            elapsed = max(
+                summary.get("elapsed_s", 0),
+                metadata["progress"]["elapsed_s"],
+                events[-1].get("monotonic_ms", 0) / 1000,
+            )
+            consumed = sum(e["type"] == "model.call" for e in events)
+            if elapsed >= config["limits"]["wall_clock_s"] or consumed >= config["limits"].get(
+                "max_steps", float("inf")
+            ):
+                raise LaunchError("run has exhausted its original time or step budget")
+            if pause_after_steps is not None and pause_after_steps <= state["steps"]:
+                raise LaunchError("pause-after-steps must exceed the restored step count")
+            state["call_count"] = max(
+                state["call_count"],
+                max(
+                    (
+                        int(e["correlation_id"].split("-")[-1])
+                        for e in events
+                        if e["type"] == "tool.call"
+                        and re.fullmatch(r"call-[0-9]+", e["correlation_id"])
+                    ),
+                    default=0,
+                ),
+            )
+            workspace = root / "workspaces" / archive.name
+            restore_workspace(archive, metadata, state, workspace)
+            resume = {
+                "metadata": metadata,
+                "state": state,
+                "rejected": rejected,
+                "elapsed": elapsed,
+                "consumed": consumed,
+                "summary": summary,
+            }
+            return _run_prepared(
+                raw,
+                config,
+                world,
+                model,
+                archive,
+                workspace,
+                resume=resume,
+                pause_after_steps=pause_after_steps,
+            )
+    except (CheckpointError, OSError, ValueError, KeyError) as error:
+        raise LaunchError(f"resume refused: {error}") from None
+
+
+def _run_prepared(
+    raw, config, world, model, archive, workspace, *, resume=None, pause_after_steps=None
+):
+    run_id, experiment_id = archive.name, config["experiment_id"]
+    if resume is None:
+        (archive / "experiment.json").write_bytes(raw)
+        shutil.copyfile(world.directory / "world-release.json", archive / "world-release.json")
+        shutil.copytree(world.directory / "contracts", archive / "contracts")
+        described = {key: value for key, value in model.items() if key != "replies"}
+        (archive / "model.json").write_text(
+            json.dumps(described, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+    elapsed_offset = resume["elapsed"] if resume else 0
+    segment_started = time.monotonic()
+    recorder = Recorder(
+        archive / "events.jsonl",
+        world.contracts,
+        experiment_id,
+        run_id,
+        append=resume is not None,
+        elapsed_s=elapsed_offset,
+    )
     system = {"kind": "system"}
     supervisor = {"kind": "supervisor"}
     agent = {"kind": "agent", "model_id": model["model_id"]}
     if "provider_id" in model:
         agent["provider_id"] = model["provider_id"]
-    scanner = WorkspaceScanner(workspace, archive, recorder, world.contracts, agent)
-    started_at = utc_now()
-    state = "created"
+    scanner = WorkspaceScanner(
+        workspace, archive, recorder, world.contracts, agent, resume=resume is not None
+    )
+    started_at = resume["summary"]["started_at"] if resume else utc_now()
+    state = resume["summary"]["final_state"] if resume else "created"
 
     def change(to: str, reason: str, by: str = "supervisor") -> None:
         nonlocal state
         recorder.record(
-            recorder=by, type="run.state_changed",
+            recorder=by,
+            type="run.state_changed",
             actor=system if by == "experiment_manager" else supervisor,
             payload={"from": state, "to": to, "reason": reason},
         )
         state = to
 
-    recorder.record(recorder="experiment_manager", type="run.state_changed", actor=system,
-                    payload={"to": "created", "reason": "launch"})
-    change("starting", "launch", by="experiment_manager")
+    if resume:
+        segments = archive / "segments"
+        segments.mkdir(exist_ok=True)
+        shutil.copyfile(archive / "summary.json", segments / f"{recorder.count:08d}.json")
+        (archive / "summary.json").unlink()
+        change("recovering", "operator requested checkpoint resume")
+        recorder.record(
+            recorder="supervisor",
+            type="recovery",
+            actor=supervisor,
+            payload={
+                "action": "resume_from_checkpoint",
+                "checkpoint_id": resume["metadata"]["checkpoint_id"],
+                "extensions": {
+                    "snapshot_event_seq": resume["metadata"]["last_event_seq"],
+                    "rejected_checkpoints": resume["rejected"],
+                    "elapsed_s": elapsed_offset,
+                },
+            },
+        )
+        scanner.scan({"kind": "system"})
+    else:
+        recorder.record(
+            recorder="experiment_manager",
+            type="run.state_changed",
+            actor=system,
+            payload={"to": "created", "reason": "launch"},
+        )
+        change("starting", "launch", by="experiment_manager")
 
     notes: list[str] = []
     tree: ProcessTree | None = None
-    stderr_log = (archive / "runtime.stderr.log").open("wb")
+    stderr_log = (archive / "runtime.stderr.log").open("ab" if resume else "wb")
     final, reason = "failed", "supervisor error"
     try:
         tree = ProcessTree(
             WORKER_COMMAND,
-            stdin=-1, stdout=-1, stderr=stderr_log, env=minimal_environment(),
+            stdin=-1,
+            stdout=-1,
+            stderr=stderr_log,
+            env=minimal_environment(),
         )
         capabilities = config.get("capabilities", {})
         spec = {
@@ -258,22 +430,65 @@ def run_experiment(config_path: Path, root: Path | None = None) -> RunResult:
             "capabilities": world.manifest["capabilities"],
             "initial_prompt": config["initial_prompt"],
             "continuation_message": continuation_message(config, world),
-            "max_steps": config["limits"].get("max_steps"),
+            "max_steps": (
+                resume["state"]["steps"] + config["limits"]["max_steps"] - resume["consumed"]
+                if resume and "max_steps" in config["limits"]
+                else config["limits"].get("max_steps")
+            ),
+            "checkpointing": config.get("checkpointing"),
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
             "deny": capabilities.get("deny"),
             "model": model,
             "actor": agent,
         }
+        if resume:
+            spec["runtime_state"] = resume["state"]
         process = tree.process
         process.stdin.write((json.dumps(spec) + "\n").encode("utf-8"))
         process.stdin.flush()
         change("running", "runtime started")
+
+        def snapshot(runtime, reason):
+            return write_checkpoint(
+                archive,
+                workspace,
+                recorder,
+                world,
+                model["model_id"],
+                runtime,
+                elapsed_offset + time.monotonic() - segment_started,
+                reason,
+                config.get("checkpointing", {}).get("keep_last", 3),
+                deadline=segment_started + config["limits"]["wall_clock_s"] - elapsed_offset,
+            )
+
         final, reason = _supervise(
-            tree, recorder, scanner, config["limits"]["wall_clock_s"], supervisor
+            tree,
+            recorder,
+            scanner,
+            config["limits"]["wall_clock_s"]
+            - (elapsed_offset + time.monotonic() - segment_started),
+            supervisor,
+            checkpointing=config.get("checkpointing"),
+            snapshot=snapshot,
+            pause_after_steps=pause_after_steps,
         )
         if final == "terminated":
             change("stopping", reason)
+    except CheckpointTimeout:
+        tree.kill()
+        recorder.record(
+            recorder="supervisor",
+            type="supervisor.action",
+            actor=supervisor,
+            payload={
+                "action": "terminated",
+                "detail": "wall_clock_s reached during checkpoint creation",
+            },
+        )
+        final, reason = "terminated", "deadline"
+        change("stopping", reason)
     except (OSError, RecordError, ValueError) as error:
         notes.append(f"supervisor error: {type(error).__name__}: {error}")
     finally:
@@ -286,16 +501,23 @@ def run_experiment(config_path: Path, root: Path | None = None) -> RunResult:
         scanner.scan({"kind": "system"})
         if compute_content_digest(world.directory, world.manifest) != world.digest:
             recorder.record(
-                recorder="supervisor", type="error", actor=supervisor,
-                payload={"origin": "host", "recoverable": False,
-                         "message": "the world release changed while the run was in progress"},
+                recorder="supervisor",
+                type="error",
+                actor=supervisor,
+                payload={
+                    "origin": "host",
+                    "recoverable": False,
+                    "message": "the world release changed while the run was in progress",
+                },
             )
             notes.append("the world release changed during the run")
         if notes and final != "failed":
             final, reason = "failed", notes[0]
         if final == "failed" and not recorder.by_type.get("error"):
             recorder.record(
-                recorder="supervisor", type="error", actor=supervisor,
+                recorder="supervisor",
+                type="error",
+                actor=supervisor,
                 payload={"origin": "supervisor", "message": reason, "recoverable": False},
             )
         change(final, reason)
@@ -309,16 +531,28 @@ def run_experiment(config_path: Path, root: Path | None = None) -> RunResult:
         "reason": reason,
         "started_at": started_at,
         "ended_at": utc_now(),
+        "elapsed_s": elapsed_offset + time.monotonic() - segment_started,
         "event_count": recorder.count,
         "events_by_type": dict(sorted(recorder.by_type.items())),
         "artifact_versions": scanner.versions,
         "last_event_sha256": recorder.last_event_sha256,
-        "world": {"world_id": world.manifest["world_id"], "version": world.manifest["version"],
-                  "content_digest": world.digest},
+        "world": {
+            "world_id": world.manifest["world_id"],
+            "version": world.manifest["version"],
+            "content_digest": world.digest,
+        },
         "model": {
-            "model_id": model["model_id"], "real_model": model["real_model"],
-            **({"provider_id": model["provider_id"], "provider_ref": model["provider_ref"],
-                "digest": model["identity"].get("digest")} if model["real_model"] else {}),
+            "model_id": model["model_id"],
+            "real_model": model["real_model"],
+            **(
+                {
+                    "provider_id": model["provider_id"],
+                    "provider_ref": model["provider_ref"],
+                    "digest": model["identity"].get("digest"),
+                }
+                if model["real_model"]
+                else {}
+            ),
         },
         "simulation_version": __version__,
     }
@@ -334,6 +568,10 @@ def _supervise(
     scanner: WorkspaceScanner,
     wall_clock_s: int,
     supervisor: dict[str, Any],
+    *,
+    checkpointing=None,
+    snapshot=None,
+    pause_after_steps=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -349,21 +587,54 @@ def _supervise(
     open_calls: dict[str, str] = {}  # correlation id -> capability id
     ended: dict[str, Any] | None = None
     last_seq: int | None = None
+    next_checkpoint = time.monotonic()
+    pause_requested = False
+    stop_sent = False
 
     def refuse(message: str) -> None:
         recorder.record(
-            recorder="supervisor", type="error", actor=supervisor,
-            payload={"origin": "agent_runtime", "recoverable": True,
-                     "message": f"runtime request refused: {message}"},
+            recorder="supervisor",
+            type="error",
+            actor=supervisor,
+            payload={
+                "origin": "agent_runtime",
+                "recoverable": True,
+                "message": f"runtime request refused: {message}",
+            },
         )
 
     def handle(line: bytes) -> None:
-        nonlocal ended, last_seq
+        nonlocal ended, last_seq, next_checkpoint, stop_sent
         last_seq = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             return refuse("not JSON")
+        if isinstance(message, dict) and isinstance(message.get("state"), dict):
+            runtime = message["state"]
+            fields = ("steps", "script_cursor", "call_count", "tokens_used")
+            if (
+                checkpointing is None
+                or open_calls
+                or not isinstance(runtime.get("messages"), list)
+                or any(not isinstance(runtime.get(k), int) or runtime[k] < 0 for k in fields)
+            ):
+                return refuse("invalid checkpoint state barrier")
+            stop_sent = pause_requested or (
+                pause_after_steps is not None and runtime["steps"] >= pause_after_steps
+            )
+            now = time.monotonic()
+            if stop_sent or message.get("final") or now >= next_checkpoint:
+                reason = (
+                    "operator_request"
+                    if stop_sent
+                    else "pre_shutdown"
+                    if message.get("final")
+                    else "interval"
+                )
+                snapshot(runtime, reason)
+                next_checkpoint = time.monotonic() + checkpointing.get("interval_s", 60)
+            return None
         if isinstance(message, dict) and isinstance(message.get("end"), dict):
             ended = message["end"]
             return None
@@ -378,8 +649,11 @@ def _supervise(
             return refuse("actor must be the agent or the system")
         try:
             event = recorder.record(
-                recorder=request["recorder"], type=kind, actor=actor,
-                payload=request.get("payload"), correlation_id=request.get("correlation_id"),
+                recorder=request["recorder"],
+                type=kind,
+                actor=actor,
+                payload=request.get("payload"),
+                correlation_id=request.get("correlation_id"),
             )
         except RecordError as error:
             return refuse(f"invalid {kind} event: {error}")
@@ -389,24 +663,50 @@ def _supervise(
             target = payload["capability_id"]
             if target in ("capabilities.invoke", "capabilities.demonstrate"):
                 candidate = payload.get("arguments", {}).get("id")
-                if (isinstance(candidate, str) and _SLUG.fullmatch(candidate)
-                        and len(candidate) <= 128):
+                if (
+                    isinstance(candidate, str)
+                    and _SLUG.fullmatch(candidate)
+                    and len(candidate) <= 128
+                ):
                     target = candidate
             open_calls[event["correlation_id"]] = target
         elif kind == "tool.result":
             # The runtime is waiting for the acknowledgement, so whatever changed
             # in the workspace since the last scan happened during this call.
             capability_id = open_calls.pop(event["correlation_id"], None)
-            producer: dict[str, Any] = {"kind": "tool",
-                                        "tool_call_correlation_id": event["correlation_id"]}
+            producer: dict[str, Any] = {
+                "kind": "tool",
+                "tool_call_correlation_id": event["correlation_id"],
+            }
             if capability_id:
                 producer["capability_id"] = capability_id
             scanner.scan(producer)
+            if capability_id == "memory.write":
+                outcome = event["payload"]
+                result = outcome.get("result", {})
+                if "outcome" in result:
+                    outcome = result["outcome"]
+                    result = outcome.get("result", {})
+                if outcome.get("status") == "ok" and "key" in result:
+                    recorder.record(
+                        recorder="supervisor",
+                        type="memory.written",
+                        actor=supervisor,
+                        payload={
+                            "extensions": {
+                                "key": result["key"],
+                                "revision": result["revision"],
+                                "tool_call_correlation_id": event["correlation_id"],
+                            }
+                        },
+                    )
         return None
 
     def acknowledge() -> None:
         try:
-            process.stdin.write((json.dumps({"ack": True, "seq": last_seq}) + "\n").encode())
+            process.stdin.write(
+                (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent}) + "\n").encode()
+            )
             process.stdin.flush()
         except OSError:
             pass  # the runtime has already gone; its exit is handled below
@@ -418,13 +718,21 @@ def _supervise(
             tree.kill()
             _drain(messages, handle)
             recorder.record(
-                recorder="supervisor", type="supervisor.action", actor=supervisor,
+                recorder="supervisor",
+                type="supervisor.action",
+                actor=supervisor,
                 payload={"action": "terminated", "detail": "wall_clock_s limit reached"},
             )
             return "terminated", "deadline"
         try:
             line = messages.get(timeout=min(remaining, 0.25))
         except queue.Empty:
+            continue
+        except KeyboardInterrupt:
+            if checkpointing is None:
+                tree.kill()
+                return "terminated", "operator interrupt without checkpointing"
+            pause_requested = True
             continue
         if line is None:
             code = process.wait()
@@ -433,9 +741,19 @@ def _supervise(
         if ended is None:
             acknowledge()
 
+    if ended.get("reason") == "operator_pause" and stop_sent:
+        recorder.record(
+            recorder="supervisor",
+            type="supervisor.action",
+            actor=supervisor,
+            payload={"action": "paused", "detail": "operator pause at complete-step barrier"},
+        )
+        return "paused", "operator checkpoint pause"
     if ended.get("reason") == "max_steps":
         recorder.record(
-            recorder="supervisor", type="supervisor.action", actor=supervisor,
+            recorder="supervisor",
+            type="supervisor.action",
+            actor=supervisor,
             payload={"action": "limit_enforced", "detail": "max_steps limit reached"},
         )
         return "terminated", "max_steps"

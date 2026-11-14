@@ -10,23 +10,41 @@ from pathlib import Path
 from . import __version__, ollama
 from .archive import verify_archive
 from .paths import data_root
-from .supervisor import LaunchError, run_experiment
+from .supervisor import LaunchError, resume_experiment, run_experiment
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.data_root) if args.data_root else data_root()
     try:
-        result = run_experiment(Path(args.experiment), root)
+        result = run_experiment(
+            Path(args.experiment), root, pause_after_steps=args.pause_after_steps
+        )
     except LaunchError as error:
         print(f"Run refused; nothing was created. {error}", file=sys.stderr)
         return 2
+    return _print_result(result)
+
+
+def _cmd_resume(args: argparse.Namespace) -> int:
+    root = Path(args.data_root) if args.data_root else data_root()
+    try:
+        result = resume_experiment(
+            Path(args.archive), root, pause_after_steps=args.pause_after_steps
+        )
+    except LaunchError as error:
+        print(f"Resume refused. {error}", file=sys.stderr)
+        return 2
+    return _print_result(result)
+
+
+def _print_result(result) -> int:
     print(f"Run {result.run_id} ended: {result.state} ({result.reason})")
     print(f"  events:    {result.events}")
     print(f"  archive:   {result.archive}")
     print(f"  workspace: {result.workspace}")
     for note in result.notes:
         print(f"  note:      {note}")
-    return 0 if result.state in ("completed", "terminated") else 1
+    return 0 if result.state in ("completed", "terminated", "paused") else 1
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -41,8 +59,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 def _cmd_measure(args: argparse.Namespace) -> int:
     base = ollama.native_base(args.base_url)
     try:
-        report = {"identity": ollama.identify(base, args.provider_ref),
-                  "measured": ollama.measure(base, args.provider_ref)}
+        report = {
+            "identity": ollama.identify(base, args.provider_ref),
+            "measured": ollama.measure(base, args.provider_ref),
+        }
     except ollama.OllamaError as error:
         print(f"Measurement failed: {error}", file=sys.stderr)
         return 1
@@ -58,7 +78,18 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="Launch one run of an experiment and supervise it.")
     run.add_argument("experiment", help="Experiment configuration file (.json).")
     run.add_argument("--data-root", help="Data root. Default: $OPEN_LAB_DATA or ~/open-lab-data.")
+    run.add_argument(
+        "--pause-after-steps",
+        type=int,
+        help="Operator pause at this completed-step count; needs checkpointing.",
+    )
     run.set_defaults(func=_cmd_run)
+
+    resume = commands.add_parser("resume", help="Resume a stopped run from a verified checkpoint.")
+    resume.add_argument("archive", help="Run archive beneath this data root's runs directory.")
+    resume.add_argument("--data-root", help="Data root containing this archive and its world.")
+    resume.add_argument("--pause-after-steps", type=int)
+    resume.set_defaults(func=_cmd_resume)
 
     verify = commands.add_parser("verify", help="Check a run archive is complete and untampered.")
     verify.add_argument("archive", help="Run archive: <data root>/runs/<experiment>/<run>.")

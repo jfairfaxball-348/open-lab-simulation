@@ -72,9 +72,13 @@ class ScriptedModel:
 
     model_id = SCRIPTED_MODEL_ID
 
-    def __init__(self, replies: list[dict[str, Any]]):
+    def __init__(self, replies: list[dict[str, Any]], start: int = 0):
         self._replies = list(replies)
-        self._next = 0
+        self._next = start
+
+    @property
+    def position(self):
+        return self._next
 
     def chat(self, messages: list[dict[str, Any]]) -> ModelReply | None:
         if self._next >= len(self._replies):

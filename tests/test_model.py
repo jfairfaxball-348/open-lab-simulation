@@ -26,7 +26,7 @@ from open_lab_simulation.model import (
     tool_definitions,
 )
 from open_lab_simulation.registry import PREAMBLE
-from open_lab_simulation.supervisor import LaunchError, run_experiment
+from open_lab_simulation.supervisor import LaunchError, resume_experiment, run_experiment
 from open_lab_simulation.world import file_sha256, load_world
 
 NAMES = {"text_stats": "text.stats", "math_evaluate": "math.evaluate"}
@@ -559,3 +559,34 @@ def test_scripted_runs_never_contact_a_model_server(model_root, make_config, ser
     assert result.state == "completed" and server.requests == []
     stored = json.loads((result.archive / "model.json").read_text(encoding="utf-8"))
     assert stored == {"kind": "scripted", "model_id": "scripted", "real_model": False}
+
+
+def test_model_resume_receives_saved_conversation_and_same_identity(
+    model_root, model_config, server,
+):
+    server.replies = [{"content": "first", "tool_calls": [
+        invoke_call("text.stats", {"text": "saved conversation"})]}, {"content": "second"}]
+    config = model_config(checkpointing={}, limits={"wall_clock_s": 60, "max_steps": 2})
+    paused = run_experiment(config, model_root, pause_after_steps=1)
+    assert paused.state == "paused"
+    resumed = resume_experiment(paused.archive, model_root)
+    assert resumed.state == "terminated" and resumed.reason == "max_steps"
+    assert len(server.requests) == 2
+    first, second = server.requests
+    assert second["messages"][:2] == first["messages"]
+    assert second["messages"][2]["content"] == "first"
+    assert json.loads(second["messages"][3]["content"])["result"]["words"] == 2
+    assert verify_archive(resumed.archive) == []
+
+
+def test_resume_refuses_changed_model_digest_before_restoring_anything(
+    model_root, model_config, server,
+):
+    config = model_config(checkpointing={})
+    paused = run_experiment(config, model_root, pause_after_steps=1)
+    before = (paused.archive / "events.jsonl").read_bytes()
+    server.models[0]["digest"] = "b" * 64
+    with pytest.raises(LaunchError, match="model digest"):
+        resume_experiment(paused.archive, model_root)
+    assert (paused.archive / "events.jsonl").read_bytes() == before
+    assert not list(paused.workspace.parent.glob(paused.run_id + ".before-resume-*"))

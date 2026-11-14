@@ -92,6 +92,275 @@
     },
     {
       "categories": [
+        "memory"
+      ],
+      "documentation_path": "registry/docs/memory.list.txt",
+      "id": "memory.list",
+      "keywords": [
+        "notes",
+        "remember",
+        "recall",
+        "list"
+      ],
+      "name": "Memory list",
+      "summary": "List memory entries sorted by key.",
+      "tokens": {
+        "categories": [
+          "memory"
+        ],
+        "description": [
+          "agent",
+          "an",
+          "at",
+          "automatically",
+          "before",
+          "by",
+          "contains",
+          "convention",
+          "created",
+          "empty",
+          "entries",
+          "first",
+          "for",
+          "form",
+          "free",
+          "in",
+          "is",
+          "it",
+          "key",
+          "list",
+          "md",
+          "memory",
+          "no",
+          "not",
+          "notes",
+          "operations",
+          "or",
+          "owned",
+          "permissions",
+          "read",
+          "return",
+          "sorted",
+          "sqlite",
+          "state",
+          "supervisor",
+          "the",
+          "working",
+          "workspace",
+          "write"
+        ],
+        "id": [
+          "list",
+          "memory"
+        ],
+        "keywords": [
+          "list",
+          "notes",
+          "recall",
+          "remember"
+        ],
+        "name": [
+          "list",
+          "memory"
+        ],
+        "summary": [
+          "by",
+          "entries",
+          "key",
+          "list",
+          "memory",
+          "sorted"
+        ]
+      }
+    },
+    {
+      "categories": [
+        "memory"
+      ],
+      "documentation_path": "registry/docs/memory.search.txt",
+      "id": "memory.search",
+      "keywords": [
+        "notes",
+        "remember",
+        "recall",
+        "search"
+      ],
+      "name": "Memory search",
+      "summary": "Find memory entries by literal substring in their keys or values.",
+      "tokens": {
+        "categories": [
+          "memory"
+        ],
+        "description": [
+          "agent",
+          "an",
+          "at",
+          "automatically",
+          "before",
+          "by",
+          "contains",
+          "convention",
+          "created",
+          "empty",
+          "entries",
+          "find",
+          "first",
+          "for",
+          "form",
+          "free",
+          "in",
+          "is",
+          "it",
+          "keys",
+          "list",
+          "literal",
+          "md",
+          "memory",
+          "no",
+          "not",
+          "notes",
+          "operations",
+          "or",
+          "owned",
+          "permissions",
+          "read",
+          "return",
+          "sqlite",
+          "state",
+          "substring",
+          "supervisor",
+          "the",
+          "their",
+          "values",
+          "working",
+          "workspace",
+          "write"
+        ],
+        "id": [
+          "memory",
+          "search"
+        ],
+        "keywords": [
+          "notes",
+          "recall",
+          "remember",
+          "search"
+        ],
+        "name": [
+          "memory",
+          "search"
+        ],
+        "summary": [
+          "by",
+          "entries",
+          "find",
+          "in",
+          "keys",
+          "literal",
+          "memory",
+          "or",
+          "substring",
+          "their",
+          "values"
+        ]
+      }
+    },
+    {
+      "categories": [
+        "memory"
+      ],
+      "documentation_path": "registry/docs/memory.write.txt",
+      "id": "memory.write",
+      "keywords": [
+        "notes",
+        "remember",
+        "recall",
+        "write"
+      ],
+      "name": "Memory write",
+      "summary": "Store a named text note in this run’s durable SQLite memory.",
+      "tokens": {
+        "categories": [
+          "memory"
+        ],
+        "description": [
+          "a",
+          "agent",
+          "an",
+          "at",
+          "automatically",
+          "before",
+          "contains",
+          "convention",
+          "created",
+          "durable",
+          "empty",
+          "first",
+          "for",
+          "form",
+          "free",
+          "in",
+          "is",
+          "it",
+          "list",
+          "md",
+          "memory",
+          "named",
+          "no",
+          "not",
+          "note",
+          "notes",
+          "operations",
+          "or",
+          "owned",
+          "permissions",
+          "read",
+          "return",
+          "run",
+          "s",
+          "sqlite",
+          "state",
+          "store",
+          "supervisor",
+          "text",
+          "the",
+          "this",
+          "working",
+          "workspace",
+          "write"
+        ],
+        "id": [
+          "memory",
+          "write"
+        ],
+        "keywords": [
+          "notes",
+          "recall",
+          "remember",
+          "write"
+        ],
+        "name": [
+          "memory",
+          "write"
+        ],
+        "summary": [
+          "a",
+          "durable",
+          "in",
+          "memory",
+          "named",
+          "note",
+          "run",
+          "s",
+          "sqlite",
+          "store",
+          "text",
+          "this"
+        ]
+      }
+    },
+    {
+      "categories": [
         "text"
       ],
       "documentation_path": "registry/docs/text.stats.txt",

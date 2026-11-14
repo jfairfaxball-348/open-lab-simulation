@@ -12,12 +12,13 @@ its newline), so any later edit, removal or reordering breaks the chain.
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .contracts import Contracts, canonical_json, sha256_text
+from .contracts import Contracts, canonical_json, sha256_text, validate_event_stream
 
 
 class RecordError(Exception):
@@ -29,17 +30,49 @@ def utc_now() -> str:
 
 
 class Recorder:
-    def __init__(self, path: Path, contracts: Contracts, experiment_id: str, run_id: str):
+    def __init__(
+        self,
+        path: Path,
+        contracts: Contracts,
+        experiment_id: str,
+        run_id: str,
+        *,
+        append: bool = False,
+        elapsed_s: float = 0,
+    ):
         self.path = path
         self._contracts = contracts
         self._identity = {"experiment_id": experiment_id, "run_id": run_id}
         self._schema_version = contracts.version("observation-event")
-        self._started = time.monotonic()
+        self._started = time.monotonic() - elapsed_s
         self._previous_line: str | None = None
         self.count = 0
         self.by_type: dict[str, int] = {}
+        if append:
+            raw = path.read_bytes()
+            if not raw.endswith(b"\n"):
+                raise RecordError("refusing to append to a partial event log")
+            lines = raw.decode("utf-8").splitlines()
+            if validate_event_stream(contracts, lines):
+                raise RecordError("refusing to append to an invalid event log")
+            for line in lines:
+                event = json.loads(line)
+                if any(event[k] != v for k, v in self._identity.items()):
+                    raise RecordError("event log identity differs")
+                self.count += 1
+                self.by_type[event["type"]] = self.by_type.get(event["type"], 0) + 1
+            self._previous_line = lines[-1]
+            self._started = time.monotonic() - max(elapsed_s, event.get("monotonic_ms", 0) / 1000)
         # "x": the log must not already exist. A run never appends to another run's record.
-        self._handle = path.open("x", encoding="utf-8", newline="\n")
+        self._handle = path.open("a" if append else "x", encoding="utf-8", newline="\n")
+
+    @property
+    def experiment_id(self):
+        return self._identity["experiment_id"]
+
+    @property
+    def run_id(self):
+        return self._identity["run_id"]
 
     @property
     def last_event_sha256(self) -> str | None:

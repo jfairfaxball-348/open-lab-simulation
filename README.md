@@ -11,6 +11,43 @@ never code.
 
 ## Status
 
+**S006a memory and checkpoints are implemented.** Minimal world 0.6.0 adds
+`memory.write`, `memory.search` and `memory.list`. Agent-owned SQLite data lives
+at `.memory.sqlite` in the workspace; `NOTES.md` is the optional working-notes
+convention. No permission or supervisor state is read from either file.
+
+Enable `checkpointing` in an experiment to take an initial snapshot, interval
+snapshots at completed-step barriers, and a checkpoint before normal completion
+or cooperative operator pause. Defaults: interval 60 seconds, keep 3. The
+supervisor snapshots conversation, scripted cursor/counters, SQLite memory and
+the rest of the workspace into protected, digest-bound checkpoint directories.
+
+```bash
+uv run ols run experiments/scripted-memory-checkpoint.json --pause-after-steps 2
+uv run ols verify <archive printed above>
+uv run ols resume <archive printed above>
+uv run ols verify <archive printed above>
+```
+
+Resume verifies the archive and selects the newest valid, unpruned checkpoint,
+falling back if one is corrupt. It appends to the same log with a recovery
+event; existing observations are never erased. Files, memory and conversation
+are restored together, and all consumed steps still count against the original
+limit. Active time accumulates; paused downtime does not. Changed world/model
+digests, exhausted budgets, live/stale writer locks and invalid logs are refused.
+The previous workspace is retained beside the restored one to preserve operator
+edits. Prior summaries are kept under `segments/`; stderr is appended.
+
+Corrupt snapshots remain forensic evidence and `ols verify` still reports them
+after a successful fallback. Hard deadlines retain the preceding safe snapshot.
+The `checkpoint_then_stop` mode, automatic crash/reboot recovery and stale-lock
+handling remain S006b; S006a manual resume needs a stopped run with a summary.
+Operator `--pause-after-steps` is the tested CLI stop mechanism. Ctrl+C while
+the supervisor waits requests a pause at the next complete-step barrier; native
+console signal delivery to the entire process tree remains unverified.
+See the Builder's `docs/decisions/ADR-0009-checkpoint-barriers-and-agent-memory.md`
+and `docs/experiments/2026-11-14-memory-checkpoints.md`.
+
 S005a refresh: tests and experiment configurations use Builder-built minimal
 world 0.4.0, including its generated registry and documentation, plus
 `workspace.write`, `workspace.list` and `time.now`. The fixture is copied from
@@ -75,7 +112,7 @@ What does **not** exist yet:
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
   window is whatever the server uses by default.
-- No memory, checkpoints, crash recovery, resource
+- No automatic crash recovery, resource
   limits beyond the deadline and step count, or container isolation.
   Configurations that ask for any of these are refused, not approximated.
 - Isolation is the *process tier*: an architectural boundary for capabilities

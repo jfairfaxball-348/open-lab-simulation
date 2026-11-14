@@ -51,6 +51,11 @@ class Channel:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
         self._out.flush()
 
+    def state(self, state: dict, final: bool = False) -> bool:
+        self._out.write(json.dumps({"state": state, "final": final}) + "\n")
+        self._out.flush()
+        return bool(self.read().get("stop"))
+
 
 def run_loop(
     model: ModelClient,
@@ -60,6 +65,8 @@ def run_loop(
     max_steps: int | None,
     actor: dict[str, Any],
     continuation: str,
+    runtime_state: dict | None = None,
+    checkpoint=None,
 ) -> tuple[str, int]:
     """The agent loop. Returns why it ended and how many steps it took.
 
@@ -68,66 +75,119 @@ def run_loop(
     continuation message, records exactly that, and asks the model again. The
     run then ends only at the step limit, the deadline or a failure.
     """
-    emit({"recorder": "agent_runtime", "type": "environment.message",
-          "actor": {"kind": "system"}, "payload": {"kind": "preamble", "text": PREAMBLE}})
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": PREAMBLE}, {"role": "user", "content": prompt},
-    ]
-    steps = 0
+    if runtime_state is None:
+        emit(
+            {
+                "recorder": "agent_runtime",
+                "type": "environment.message",
+                "actor": {"kind": "system"},
+                "payload": {"kind": "preamble", "text": PREAMBLE},
+            }
+        )
+    messages = (
+        runtime_state["messages"]
+        if runtime_state
+        else [{"role": "system", "content": PREAMBLE}, {"role": "user", "content": prompt}]
+    )
+    steps = runtime_state["steps"] if runtime_state else 0
+    tokens_used = runtime_state["tokens_used"] if runtime_state else 0
+
+    def save(final=False):
+        return checkpoint and checkpoint(
+            {
+                "messages": messages,
+                "steps": steps,
+                "script_cursor": getattr(model, "position", steps),
+                "call_count": host._calls,
+                "tokens_used": tokens_used,
+            },
+            final,
+        )
+
+    if save():
+        return "operator_pause", steps
     while max_steps is None or steps < max_steps:
         started = time.monotonic()
         try:
             reply = model.chat(messages)
         except ModelError as error:
-            emit({
-                "recorder": "agent_runtime", "type": "error", "actor": {"kind": "system"},
-                "payload": {"origin": "model", "message": str(error), "recoverable": False},
-            })
+            emit(
+                {
+                    "recorder": "agent_runtime",
+                    "type": "error",
+                    "actor": {"kind": "system"},
+                    "payload": {"origin": "model", "message": str(error), "recoverable": False},
+                }
+            )
+            save(final=True)
             return "model_error", steps
         if reply is None:
+            save(final=True)
             return "model_finished", steps
         steps += 1
-        emit({
-            "recorder": "model_gateway", "type": "model.call", "actor": actor,
-            "payload": {
-                "model_id": model.model_id, "purpose": "orchestration",
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                **reply.details,
-            },
-        })
+        tokens_used += reply.details.get("input_tokens", 0) + reply.details.get("output_tokens", 0)
+        emit(
+            {
+                "recorder": "model_gateway",
+                "type": "model.call",
+                "actor": actor,
+                "payload": {
+                    "model_id": model.model_id,
+                    "purpose": "orchestration",
+                    "duration_ms": int((time.monotonic() - started) * 1000),
+                    **reply.details,
+                },
+            }
+        )
         output: dict[str, Any] = {"text": reply.text[:MAX_OUTPUT_CHARS]}
         if reply.tool_calls:
             # Keep the emitted names/argument strings as evidence distinct
             # from the repaired arguments subsequently sent to the tool host.
-            output["extensions"] = {"raw_tool_calls": [
-                {"id": call.id, "name": call.name, "arguments": call.raw_arguments}
-                for call in reply.tool_calls
-            ]}
+            output["extensions"] = {
+                "raw_tool_calls": [
+                    {"id": call.id, "name": call.name, "arguments": call.raw_arguments}
+                    for call in reply.tool_calls
+                ]
+            }
         if len(reply.text) > MAX_OUTPUT_CHARS:
             output["truncated"] = True
-        output_seq = emit({"recorder": "agent_runtime", "type": "agent.output",
-                           "actor": actor, "payload": output})
+        output_seq = emit(
+            {"recorder": "agent_runtime", "type": "agent.output", "actor": actor, "payload": output}
+        )
         # The conversation is kept in the chat-completions shape, as the model wrote it.
         said: dict[str, Any] = {"role": "assistant", "content": reply.text}
         if reply.tool_calls:
             said["tool_calls"] = [
-                {"id": call.id, "type": "function",
-                 "function": {"name": call.name, "arguments": call.raw_arguments}}
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.raw_arguments},
+                }
                 for call in reply.tool_calls
             ]
         messages.append(said)
         for call in reply.tool_calls:
             result = host.call(call.capability_id, call.arguments)
-            messages.append({"role": "tool", "tool_call_id": call.id,
-                             "content": json.dumps(result)})
+            messages.append(
+                {"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)}
+            )
         if not reply.tool_calls:
             payload: dict[str, Any] = {"kind": "continuation", "text": continuation}
             if output_seq is not None:
                 payload["after_seq"] = output_seq
             # Recorded before the model can see it, like everything else it is told.
-            emit({"recorder": "agent_runtime", "type": "environment.message",
-                  "actor": {"kind": "system"}, "payload": payload})
+            emit(
+                {
+                    "recorder": "agent_runtime",
+                    "type": "environment.message",
+                    "actor": {"kind": "system"},
+                    "payload": payload,
+                }
+            )
             messages.append({"role": "user", "content": continuation})
+        if save():
+            return "operator_pause", steps
+    save(final=True)
     return "max_steps", steps
 
 
@@ -143,21 +203,40 @@ def main() -> int:
     chosen = spec["model"]
     model: ModelClient
     if chosen["kind"] == "scripted":
-        model = ScriptedModel(chosen["replies"])
+        model = ScriptedModel(
+            chosen["replies"], spec.get("runtime_state", {}).get("script_cursor", 0)
+        )
     else:
         model = OpenAIChatModel(
-            chosen["model_id"], chosen["base_url"], chosen["provider_ref"], META_TOOLS,
-            chosen.get("sampling"), chosen.get("context_tokens"),
+            chosen["model_id"],
+            chosen["base_url"],
+            chosen["provider_ref"],
+            META_TOOLS,
+            chosen.get("sampling"),
+            chosen.get("context_tokens"),
         )
     actor = spec["actor"]
     host = ToolHost(
-        capabilities, Path(spec["workspace"]), spec["permissions"], channel.emit, actor,
-        allow=spec.get("allow"), deny=spec.get("deny"),
+        capabilities,
+        Path(spec["workspace"]),
+        spec["permissions"],
+        channel.emit,
+        actor,
+        allow=spec.get("allow"),
+        deny=spec.get("deny"),
         registry=Registry(release, capabilities),
     )
+    host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(
-        model, host, channel.emit, spec["initial_prompt"], spec.get("max_steps"), actor,
+        model,
+        host,
+        channel.emit,
+        spec["initial_prompt"],
+        spec.get("max_steps"),
+        actor,
         spec["continuation_message"],
+        runtime_state=spec.get("runtime_state"),
+        checkpoint=channel.state if spec.get("checkpointing") is not None else None,
     )
     channel.end(reason, steps)
     return 0
