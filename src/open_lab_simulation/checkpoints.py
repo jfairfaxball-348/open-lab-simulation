@@ -10,10 +10,11 @@ import sqlite3
 import tempfile
 import time
 import zipfile
-from contextlib import closing, contextmanager
+from contextlib import closing
 from pathlib import Path, PurePosixPath
 
 from .contracts import sha256_text
+from .ownership import archive_lock
 from .recorder import utc_now
 from .world import file_sha256
 
@@ -46,21 +47,7 @@ def write_json(path, value):
     )
 
 
-@contextmanager
-def run_lock(archive):
-    path = archive / ".writer.lock"
-    try:
-        handle = path.open("x", encoding="ascii")
-    except FileExistsError:
-        raise CheckpointError(
-            "run already has a writer lock; interrupted-writer recovery is S006b"
-        ) from None
-    try:
-        handle.write(str(os.getpid()))
-        handle.close()
-        yield
-    finally:
-        path.unlink(missing_ok=True)
+run_lock = archive_lock
 
 
 def _no_link(path):

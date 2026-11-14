@@ -56,6 +56,11 @@ class Channel:
         self._out.flush()
         return bool(self.read().get("stop"))
 
+    def reserve_step(self):
+        self._out.write(json.dumps({"step_start": True}) + "\n")
+        self._out.flush()
+        self.read()
+
 
 def run_loop(
     model: ModelClient,
@@ -67,6 +72,7 @@ def run_loop(
     continuation: str,
     runtime_state: dict | None = None,
     checkpoint=None,
+    reserve_step=None,
 ) -> tuple[str, int]:
     """The agent loop. Returns why it ended and how many steps it took.
 
@@ -107,6 +113,8 @@ def run_loop(
     if save():
         return "operator_pause", steps
     while max_steps is None or steps < max_steps:
+        if reserve_step:
+            reserve_step()
         started = time.monotonic()
         try:
             reply = model.chat(messages)
@@ -237,6 +245,7 @@ def main() -> int:
         spec["continuation_message"],
         runtime_state=spec.get("runtime_state"),
         checkpoint=channel.state if spec.get("checkpointing") is not None else None,
+        reserve_step=channel.reserve_step if spec.get("reserve_steps") else None,
     )
     channel.end(reason, steps)
     return 0

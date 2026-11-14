@@ -58,9 +58,65 @@ uv run ols run experiments/scripted-graceful-deadline.json
 uv run ols verify <archive printed above>
 ```
 
-Automatic crash/reboot recovery and stale-lock handling remain S006d;
-resource enforcement and sampling remain S006e. Manual resume needs a stopped
-run with a summary. Deadline notices are still refused. Snapshot deadline
+**S006d recovery is implemented.** It is opt-in through the frozen experiment:
+
+```json
+"checkpointing": {"interval_s": 60, "keep_last": 3},
+"extensions": {
+  "recovery": {
+    "max_restarts": 2,
+    "auto_resume": true,
+    "health_check_interval_s": 5,
+    "health_check_timeout_s": 2
+  }
+}
+```
+
+`max_restarts` is required (0–100); the other fields above are defaults except
+`auto_resume`, which defaults to false. The long-lived supervisor restarts a
+crashed worker from the newest valid checkpoint. Restarts share one persisted
+retry budget across segments and startup scans. Every model attempt is reserved
+and synced before it starts; killed attempts still consume the original step
+budget. A host-local accounting ledger reserves one second of active time ahead
+and renews every 0.2 seconds. Expired/failed accounting stops the worker. After
+an interruption, unused reservation time may be charged conservatively;
+wall-clock downtime is not added. Normal resume uses actual accumulated active
+time and also charges revalidation/restoration work.
+
+For real models, read-only `/api/tags` probes check server availability and the
+original model digest. Probes run off the deadline thread and have a supervisor
+timeout. A failed probe stops the tree and enters the same bounded recovery
+path. Revalidation can refuse an unavailable or changed model; no model is
+pulled or server started automatically. A healthy identity probe does not prove
+that inference will succeed.
+
+```bash
+uv run ols run experiments/scripted-recovery.json
+uv run ols recover
+```
+
+`ols recover` is the startup scan to run after restarting the supervisor/host.
+It resumes only incomplete archives with `auto_resume: true`. This change does
+not install an OS startup task. Completed/paused/stopped runs are not replayed.
+A permanent OS-locked `.writer.guard` serializes writers; `.writer.lock` records
+a hashed machine identity, PID and OS process birth identity. A live writer is
+never displaced. Only a confirmed absent/reused owner on this machine may have
+its stale marker archived under `segments/`. Legacy, malformed, foreign-machine
+or inaccessible ownership is refused. The old runtime must also be absent.
+On Linux a surviving old process group causes refusal.
+
+Recovery preserves every existing event and artifact version. Missing summaries
+can be recovered from complete valid logs and valid accounting/checkpoints.
+Partial logs, invalid accounting and inconsistent artifacts are refused without
+trimming observations. Refusals append supervisor actions only when exclusive
+ownership and a valid log make that safe; otherwise the CLI reports refusal
+without changing the record. Physical reboot/power-loss durability, Linux and
+large-run/uninterruptible host-I/O timing are unverified. See the Builder's
+ADR-0011 and `docs/experiments/2026-11-14-supervisor-recovery.md`.
+
+Resource enforcement and sampling remain S006e. Manual resume normally needs a
+stopped run with a summary; a failed recovery-enabled run cannot bypass the
+remaining retry budget by manual resume. Deadline notices are still refused. Snapshot deadline
 checks are cooperative between I/O chunks; uninterruptible host I/O and
 large-run timing bounds are unverified. See the Builder's ADR-0010.
 Operator `--pause-after-steps` is the tested CLI stop mechanism. Ctrl+C while
@@ -133,8 +189,7 @@ What does **not** exist yet:
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
   window is whatever the server uses by default.
-- No automatic crash recovery, resource
-  limits beyond the deadline and step count, or container isolation.
+- No resource limits beyond the deadline and step count, or container isolation.
   Configurations that ask for any of these are refused, not approximated.
 - Isolation is the *process tier*: an architectural boundary for capabilities
   written by the Builder, not a sandbox. Nothing here is safe for running
@@ -212,6 +267,8 @@ runtime.stderr.log     anything the runtime process wrote to stderr
 ```
 src/open_lab_simulation/
   supervisor.py   experiment manager and supervisor (the parent process)
+  recovery.py     opt-in policy, active-time ledger and asynchronous health probes
+  ownership.py    OS writer guard and verified process birth identities
   worker.py       agent runtime (the child process) and the agent loop
   toolhost.py     capability invocation, permissions, tool.call / tool.result
   model.py        model client interface, scripted stand-in, chat model client

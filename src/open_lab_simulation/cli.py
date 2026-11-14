@@ -10,7 +10,7 @@ from pathlib import Path
 from . import __version__, ollama
 from .archive import verify_archive
 from .paths import data_root
-from .supervisor import LaunchError, resume_experiment, run_experiment
+from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -45,6 +45,16 @@ def _print_result(result) -> int:
     for note in result.notes:
         print(f"  note:      {note}")
     return 0 if result.state in ("completed", "terminated", "paused") else 1
+
+
+def _cmd_recover(args: argparse.Namespace) -> int:
+    results, refused = recover_interrupted(Path(args.data_root) if args.data_root else None)
+    for result in results:
+        _print_result(result)
+    for run_id, reason in refused:
+        print(f"Recovery refused for {run_id}: {reason}", file=sys.stderr)
+    print(f"Startup recovery: {len(results)} resumed, {len(refused)} refused")
+    return 1 if refused or any(r.state == "failed" for r in results) else 0
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -90,6 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--data-root", help="Data root containing this archive and its world.")
     resume.add_argument("--pause-after-steps", type=int)
     resume.set_defaults(func=_cmd_resume)
+
+    recover = commands.add_parser("recover", help="Startup scan of opted-in interrupted runs.")
+    recover.add_argument("--data-root")
+    recover.set_defaults(func=_cmd_recover)
 
     verify = commands.add_parser("verify", help="Check a run archive is complete and untampered.")
     verify.add_argument("archive", help="Run archive: <data root>/runs/<experiment>/<run>.")

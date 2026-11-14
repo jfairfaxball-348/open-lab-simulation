@@ -13,6 +13,7 @@ its newline), so any later edit, removal or reordering breaks the chain.
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -118,6 +119,10 @@ class Recorder:
         self.count += 1
         self.by_type[type] = self.by_type.get(type, 0) + 1
         return event
+
+    def sync(self) -> None:
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
 
     def close(self) -> None:
         if not self._handle.closed:

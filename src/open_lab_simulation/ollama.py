@@ -42,9 +42,9 @@ def _request(base: str, path: str, body: dict[str, Any] | None = None, timeout: 
         raise OllamaError(f"model server request failed ({type(error).__name__})") from None
 
 
-def identify(base: str, provider_ref: str) -> dict[str, Any]:
+def identify(base: str, provider_ref: str, *, timeout: float = 30) -> dict[str, Any]:
     """What the server holds under this name. Raises if the model is not present."""
-    tags = _request(base, "/api/tags")
+    tags = _request(base, "/api/tags", timeout=timeout)
     wanted = {provider_ref, f"{provider_ref}:latest"}
     for entry in tags.get("models", []) if isinstance(tags, dict) else []:
         if isinstance(entry, dict) and wanted & {entry.get("name"), entry.get("model")}:
@@ -60,7 +60,9 @@ def identify(base: str, provider_ref: str) -> dict[str, Any]:
                     if key in details
                 }
             try:
-                identity["server_version"] = _request(base, "/api/version").get("version")
+                identity["server_version"] = _request(base, "/api/version", timeout=timeout).get(
+                    "version"
+                )
             except (OllamaError, AttributeError):
                 pass
             return identity

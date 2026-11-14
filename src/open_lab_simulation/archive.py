@@ -15,14 +15,23 @@ from .contracts import Contracts, validate_event_stream
 from .world import file_sha256
 
 
-def verify_archive(archive: Path, *, checkpoints: bool = True) -> list[str]:
+def verify_archive(
+    archive: Path, *, checkpoints: bool = True, allow_interrupted: bool = False,
+) -> list[str]:
     """Problems found in a run archive; an empty list means it is intact."""
     try:
         contracts = Contracts(archive / "contracts")
-        lines = (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        raw = (archive / "events.jsonl").read_bytes()
+        if not raw.endswith(b"\n"):
+            return ["the event log has a partial final line"]
+        lines = raw.decode("utf-8").splitlines()
         config = json.loads((archive / "experiment.json").read_text(encoding="utf-8"))
         world = json.loads((archive / "world-release.json").read_text(encoding="utf-8"))
-        summary = json.loads((archive / "summary.json").read_text(encoding="utf-8"))
+        summary_path = archive / "summary.json"
+        summary = (
+            json.loads(summary_path.read_text(encoding="utf-8"))
+            if summary_path.exists() or not allow_interrupted else None
+        )
     except (OSError, ValueError, KeyError) as error:
         return [f"archive is incomplete or unreadable ({type(error).__name__})"]
 
@@ -35,13 +44,15 @@ def verify_archive(archive: Path, *, checkpoints: bool = True) -> list[str]:
         return [*problems, "the event log is empty"]
 
     events = [json.loads(line) for line in lines]
-    last = events[-1]
-    if last["type"] != "run.state_changed" or last["payload"].get("to") != summary["final_state"]:
+    last = next((e for e in reversed(events) if e["type"] == "run.state_changed"), events[-1])
+    if summary is not None and (
+        last["type"] != "run.state_changed" or last["payload"].get("to") != summary["final_state"]
+    ):
         problems.append("the log does not end in the final state the summary gives")
-    if summary["event_count"] != len(events):
+    if summary is not None and summary["event_count"] != len(events):
         problems.append("the summary's event count differs from the log")
     if (events[0]["experiment_id"], events[0]["run_id"]) != (
-        config["experiment_id"], summary["run_id"]
+        config["experiment_id"], summary["run_id"] if summary else archive.name
     ):
         problems.append("the log belongs to a different run")
 

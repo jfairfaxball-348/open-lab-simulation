@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, ollama
+from . import __version__, ollama, recovery
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -177,7 +177,11 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
             "permissions.models"
         )
     try:
-        identity = ollama.identify(ollama.native_base(api["base_url"]), model["provider_ref"])
+        settings = recovery.policy(config)
+        identity = ollama.identify(
+            ollama.native_base(api["base_url"]), model["provider_ref"],
+            timeout=settings["health_check_timeout_s"] if settings else 30,
+        )
     except ollama.OllamaError as error:
         raise LaunchError(str(error)) from None
     resolved = {
@@ -219,6 +223,10 @@ def _prepare(config_path: Path, root: Path) -> tuple[bytes, dict[str, Any], Worl
     problems = world.contracts.validate(config, "experiment-config")
     if problems:
         raise LaunchError(f"invalid experiment configuration: {problems[0]}")
+    try:
+        recovery.policy(config)
+    except ValueError as error:
+        raise LaunchError(str(error)) from None
     reason = _unsupported(config, world)
     if reason:
         raise LaunchError(f"not supported by this runtime: {reason}")
@@ -248,9 +256,10 @@ def run_experiment(
     archive.mkdir(parents=True)
     workspace.mkdir(parents=True)
     with run_lock(archive):
-        return _run_prepared(
+        result = _run_prepared(
             raw, config, world, model, archive, workspace, pause_after_steps=pause_after_steps
         )
+        return _continue_recovery(result, root, config, pause_after_steps)
 
 
 def resume_experiment(
@@ -267,78 +276,212 @@ def resume_experiment(
         raise LaunchError("resume needs an archive beneath this data root's runs directory")
     try:
         with run_lock(archive):
-            problems = verify_archive(archive, checkpoints=False)
-            if problems:
-                raise LaunchError(f"run archive cannot be resumed: {problems[0]}")
-            summary = json.loads((archive / "summary.json").read_text(encoding="utf-8"))
-            if summary["final_state"] not in ("paused", "terminated", "failed"):
-                raise LaunchError("only a stopped, incomplete run can be resumed")
-            raw, config, world, model = _prepare(archive / "experiment.json", root)
-            if "checkpointing" not in config:
-                raise LaunchError("run did not enable checkpointing")
-            if world.digest != summary["world"]["content_digest"]:
-                raise LaunchError("resuming requires the original world digest")
-            prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
-            if model.get("identity", {}).get("digest") != prior_model.get("identity", {}).get(
-                "digest"
-            ):
-                raise LaunchError("resuming requires the original model digest")
-            events = [
-                json.loads(line)
-                for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()
-            ]
-            metadata, state, rejected = latest_checkpoint(archive, events, world.contracts)
-            if (
-                metadata["extensions"]["world_digest"] != world.digest
-                or metadata["orchestrator_model_id"] != model["model_id"]
-            ):
-                raise LaunchError("checkpoint world or model identity differs")
-            elapsed = max(
-                summary.get("elapsed_s", 0),
-                metadata["progress"]["elapsed_s"],
-                events[-1].get("monotonic_ms", 0) / 1000,
-            )
-            consumed = sum(e["type"] == "model.call" for e in events)
-            if elapsed >= config["limits"]["wall_clock_s"] or consumed >= config["limits"].get(
-                "max_steps", float("inf")
-            ):
-                raise LaunchError("run has exhausted its original time or step budget")
-            if pause_after_steps is not None and pause_after_steps <= state["steps"]:
-                raise LaunchError("pause-after-steps must exceed the restored step count")
-            state["call_count"] = max(
-                state["call_count"],
-                max(
-                    (
-                        int(e["correlation_id"].split("-")[-1])
-                        for e in events
-                        if e["type"] == "tool.call"
-                        and re.fullmatch(r"call-[0-9]+", e["correlation_id"])
-                    ),
-                    default=0,
-                ),
-            )
-            workspace = root / "workspaces" / archive.name
-            restore_workspace(archive, metadata, state, workspace)
-            resume = {
-                "metadata": metadata,
-                "state": state,
-                "rejected": rejected,
-                "elapsed": elapsed,
-                "consumed": consumed,
-                "summary": summary,
-            }
-            return _run_prepared(
-                raw,
-                config,
-                world,
-                model,
-                archive,
-                workspace,
-                resume=resume,
-                pause_after_steps=pause_after_steps,
-            )
+            result = _resume_locked(archive, root, pause_after_steps=pause_after_steps)
+            config = json.loads((archive / "experiment.json").read_text(encoding="utf-8"))
+            return _continue_recovery(result, root, config, pause_after_steps)
     except (CheckpointError, OSError, ValueError, KeyError) as error:
         raise LaunchError(f"resume refused: {error}") from None
+
+
+def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", stale=None):
+    recovery_started = time.monotonic()
+    interrupted = not (archive / "summary.json").exists()
+    problems = verify_archive(archive, checkpoints=False, allow_interrupted=source == "startup")
+    if problems:
+        raise LaunchError(f"run archive cannot be resumed: {problems[0]}")
+    raw, config, world, model = _prepare(archive / "experiment.json", root)
+    settings = recovery.policy(config)
+    events = [json.loads(line) for line in
+              (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    if interrupted:
+        if not settings or not settings["auto_resume"]:
+            raise LaunchError("interrupted run did not opt into startup recovery")
+        summary = {
+            "final_state": next(e["payload"]["to"] for e in reversed(events)
+                                if e["type"] == "run.state_changed"),
+            "started_at": events[0]["timestamp"],
+            "world": {"content_digest": json.loads(
+                (archive / "world-release.json").read_text()
+            )["content_digest"]["value"]},
+            "elapsed_s": recovery.interrupted_elapsed(archive),
+        }
+        if summary["final_state"] in ("completed", "terminated", "paused"):
+            raise LaunchError("interrupted archive already records a stopped run; review required")
+    else:
+        summary = json.loads((archive / "summary.json").read_text(encoding="utf-8"))
+        if summary["final_state"] not in ("paused", "terminated", "failed"):
+            raise LaunchError("only a stopped, incomplete run can be resumed")
+        if source == "operator" and summary["final_state"] == "failed" and settings:
+            source = "operator_retry"
+    if source != "operator" and (
+        not settings or recovery.restarts_used(events) >= settings["max_restarts"]
+    ):
+        raise LaunchError("recovery retry budget exhausted")
+    if "checkpointing" not in config:
+        raise LaunchError("run did not enable checkpointing")
+    if world.digest != summary["world"]["content_digest"]:
+        raise LaunchError("resuming requires the original world digest")
+    prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
+    if model.get("identity", {}).get("digest") != prior_model.get("identity", {}).get(
+        "digest"
+    ):
+        raise LaunchError("resuming requires the original model digest")
+    metadata, state, rejected = latest_checkpoint(archive, events, world.contracts)
+    if (
+        metadata["extensions"]["world_digest"] != world.digest
+        or metadata["orchestrator_model_id"] != model["model_id"]
+    ):
+        raise LaunchError("checkpoint world or model identity differs")
+    elapsed = max(
+        summary.get("elapsed_s", 0),
+        metadata["progress"]["elapsed_s"],
+        events[-1].get("monotonic_ms", 0) / 1000,
+    )
+    consumed = recovery.steps_used(events)
+    if elapsed >= config["limits"]["wall_clock_s"] or consumed >= config["limits"].get(
+        "max_steps", float("inf")
+    ):
+        raise LaunchError("run has exhausted its original time or step budget")
+    if pause_after_steps is not None and pause_after_steps <= state["steps"]:
+        raise LaunchError("pause-after-steps must exceed the restored step count")
+    state["call_count"] = max(
+        state["call_count"],
+        max(
+            (
+                int(e["correlation_id"].split("-")[-1])
+                for e in events
+                if e["type"] == "tool.call"
+                and re.fullmatch(r"call-[0-9]+", e["correlation_id"])
+            ),
+            default=0,
+        ),
+    )
+    workspace = root / "workspaces" / archive.name
+    restore_workspace(archive, metadata, state, workspace)
+    elapsed += time.monotonic() - recovery_started
+    if elapsed >= config["limits"]["wall_clock_s"]:
+        raise LaunchError("run has exhausted its original time budget during recovery")
+    resume = {
+        "metadata": metadata,
+        "state": state,
+        "rejected": rejected,
+        "elapsed": elapsed,
+        "consumed": consumed,
+        "summary": summary,
+        "source": source,
+        "stale": stale,
+    }
+    return _run_prepared(
+        raw,
+        config,
+        world,
+        model,
+        archive,
+        workspace,
+        resume=resume,
+        pause_after_steps=pause_after_steps,
+    )
+
+def _recovery_action(archive, stage, detail):
+    """Append only under the caller's writer lock; keep the summary consistent."""
+    from .contracts import Contracts
+
+    summary = json.loads((archive / "summary.json").read_text(encoding="utf-8"))
+    recorder = Recorder(archive / "events.jsonl", Contracts(archive / "contracts"),
+                        summary["experiment_id"], archive.name,
+                        append=True, elapsed_s=summary["elapsed_s"])
+    try:
+        recorder.record(recorder="supervisor", type="supervisor.action",
+                        actor={"kind": "supervisor"}, payload={
+                            "action": "limit_enforced", "detail": detail,
+                            "extensions": {"stage": stage},
+                        })
+        recorder.sync()
+        summary.update(event_count=recorder.count, events_by_type=recorder.by_type,
+                       last_event_sha256=recorder.last_event_sha256)
+        (archive / "summary.json").write_text(json.dumps(summary, indent=2) + "\n",
+                                              encoding="utf-8", newline="\n")
+    finally:
+        recorder.close()
+
+
+def _continue_recovery(result, root, config, pause_after_steps):
+    settings = recovery.policy(config)
+    if settings is None:
+        return result
+    while result.state == "failed" and (
+        result.reason.startswith("the agent runtime exited unexpectedly")
+        or result.reason in (
+            "the model server could not produce a reply", "model health check failed",
+        )
+    ):
+        events = [json.loads(line) for line in
+                  (result.archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+        if recovery.restarts_used(events) >= settings["max_restarts"]:
+            _recovery_action(result.archive, "recovery_exhausted",
+                             "recovery retry budget exhausted")
+            break
+        try:
+            result = _resume_locked(result.archive, root, pause_after_steps=pause_after_steps,
+                                    source="runtime_crash")
+        except (LaunchError, OSError, ValueError, KeyError) as error:
+            _recovery_action(result.archive, "recovery_refused", str(error))
+            break
+    # A refusal/exhaustion action changes the count after the stopped segment.
+    result.events = json.loads((result.archive / "summary.json").read_text())["event_count"]
+    return result
+
+
+def recover_interrupted(root: Path | None = None):
+    """Startup entrypoint: recover only explicitly opted-in interrupted archives."""
+    root = (root or data_root()).resolve()
+    results, refused = [], []
+    for archive in sorted((root / "runs").glob("*/*")):
+        if not archive.is_dir() or (archive / "summary.json").exists():
+            continue
+        try:
+            if (
+                archive.is_symlink() or archive.parent.is_symlink()
+                or archive.is_junction() or archive.parent.is_junction()
+                or not _SLUG.fullmatch(archive.name) or not _SLUG.fullmatch(archive.parent.name)
+            ):
+                raise LaunchError("invalid archive path")
+            config = json.loads((archive / "experiment.json").read_text(encoding="utf-8"))
+            settings = recovery.policy(config)
+            if not settings or not settings["auto_resume"]:
+                continue
+            with run_lock(archive, recover_stale=True) as stale:
+                try:
+                    result = _resume_locked(archive, root, source="startup", stale=stale)
+                except (LaunchError, OSError, ValueError, KeyError) as error:
+                    _interrupted_refusal(archive, str(error))
+                    raise
+                results.append(_continue_recovery(result, root, config, None))
+        except (LaunchError, OSError, ValueError, KeyError) as error:
+            refused.append((archive.name, str(error)))
+    return results, refused
+
+
+def _interrupted_refusal(archive, detail):
+    # A live/unverifiable writer or corrupt log cannot safely accept an event.
+    # This path runs only after exclusive ownership and complete-log validation.
+    if verify_archive(archive, checkpoints=False, allow_interrupted=True):
+        return
+    from .contracts import Contracts
+
+    events = [json.loads(line) for line in (archive / "events.jsonl").read_text().splitlines()]
+    recorder = Recorder(archive / "events.jsonl", Contracts(archive / "contracts"),
+                        events[0]["experiment_id"], archive.name, append=True,
+                        elapsed_s=events[-1].get("monotonic_ms", 0) / 1000)
+    try:
+        recorder.record(recorder="supervisor", type="supervisor.action",
+                        actor={"kind": "supervisor"}, payload={
+                            "action": "limit_enforced", "detail": detail,
+                            "extensions": {"stage": "recovery_refused"},
+                        })
+        recorder.sync()
+    finally:
+        recorder.close()
 
 
 def _run_prepared(
@@ -387,9 +530,20 @@ def _run_prepared(
     if resume:
         segments = archive / "segments"
         segments.mkdir(exist_ok=True)
-        shutil.copyfile(archive / "summary.json", segments / f"{recorder.count:08d}.json")
-        (archive / "summary.json").unlink()
-        change("recovering", "operator requested checkpoint resume")
+        if (archive / "summary.json").exists():
+            shutil.copyfile(archive / "summary.json", segments / f"{recorder.count:08d}.json")
+            (archive / "summary.json").unlink()
+        source = resume.get("source", "operator")
+        if (archive / ".supervisor.json").exists():
+            shutil.copyfile(archive / ".supervisor.json",
+                            segments / f"accounting-{recorder.count:08d}.json")
+        change("recovering", f"{source} checkpoint resume")
+        recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                        payload={"action": "resumed", "detail": f"{source} checkpoint resume",
+                                 "extensions": {"stage": "recovery_restart" if source != "operator"
+                                                else "manual_resume",
+                                                "stale_lock_evidence": resume.get("stale")}})
+        recorder.sync()
         recorder.record(
             recorder="supervisor",
             type="recovery",
@@ -418,7 +572,10 @@ def _run_prepared(
     tree: ProcessTree | None = None
     stderr_log = (archive / "runtime.stderr.log").open("ab" if resume else "wb")
     final, reason = "failed", "supervisor error"
+    accounting = None
     try:
+        if recovery.policy(config):
+            accounting = recovery.Accounting(archive, elapsed_offset)
         tree = ProcessTree(
             WORKER_COMMAND,
             stdin=-1,
@@ -448,6 +605,9 @@ def _run_prepared(
         if resume:
             spec["runtime_state"] = resume["state"]
         process = tree.process
+        if accounting:
+            accounting.attach(process.pid)
+            spec["reserve_steps"] = True
         process.stdin.write((json.dumps(spec) + "\n").encode("utf-8"))
         process.stdin.flush()
         change("running", "runtime started")
@@ -484,6 +644,9 @@ def _run_prepared(
             snapshot=snapshot,
             pause_after_steps=pause_after_steps,
             termination=config["termination"],
+            accounting=accounting,
+            health=(recovery.HealthMonitor(model, recovery.policy(config))
+                    if accounting and model["real_model"] else None),
         )
         if final == "terminated":
             change("stopping", reason)
@@ -506,6 +669,8 @@ def _run_prepared(
         if tree is not None:
             tree.close()
         stderr_log.close()
+        if accounting:
+            accounting.close()
 
     # From here nothing of the run is alive. Finish the record.
     try:
@@ -584,6 +749,8 @@ def _supervise(
     snapshot=None,
     pause_after_steps=None,
     termination=None,
+    accounting=None,
+    health=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -683,6 +850,13 @@ def _supervise(
         if isinstance(message, dict) and isinstance(message.get("end"), dict):
             ended = message["end"]
             return None
+        if message == {"step_start": True} and accounting is not None and not stopped:
+            recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                            payload={"action": "limit_enforced",
+                                     "detail": "reserved one model attempt against original budget",
+                                     "extensions": {"stage": "model_step_reserved"}})
+            recorder.sync()
+            return None
         request = message.get("event") if isinstance(message, dict) else None
         if not isinstance(request, dict) or not set(request) <= _REQUEST_FIELDS:
             return refuse("not an event request")
@@ -781,9 +955,30 @@ def _supervise(
         remaining = hard_deadline - time.monotonic()
         if remaining <= 0:
             return deadline_stop()
+        if accounting is not None and (
+            accounting.error is not None or time.monotonic() >= accounting.lease_deadline
+        ):
+            tree.kill()
+            recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                            payload={"action": "terminated",
+                                     "detail": "recovery accounting failed"})
+            return "failed", "recovery accounting failed"
+        if health is not None:
+            status = health.poll()
+            if status is not None:
+                recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                                payload={"action": "limit_enforced",
+                                         "detail": f"model health: {status}",
+                                         "extensions": {"stage": "model_health", "status": status}})
+                if status != "healthy":
+                    tree.kill()
+                    _drain(messages, lambda line: handle(line, stopped=True))
+                    return "failed", "model health check failed"
         try:
             # Wake at the nominal deadline even when there is a grace allowance.
             wait = min(remaining, 0.25)
+            if accounting is not None:
+                wait = min(wait, max(0.001, accounting.lease_deadline - time.monotonic()))
             if not deadline_requested and graceful:
                 wait = min(wait, max(0.001, deadline - time.monotonic()))
             line = messages.get(timeout=wait)
@@ -815,7 +1010,9 @@ def _supervise(
                 },
             )
             return "terminated", "deadline"
-        if ended is None and time.monotonic() < hard_deadline:
+        if ended is None and time.monotonic() < hard_deadline and (
+            accounting is None or time.monotonic() < accounting.lease_deadline
+        ):
             acknowledge()
 
     if deadline_requested:
