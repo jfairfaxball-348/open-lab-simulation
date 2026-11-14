@@ -232,6 +232,14 @@ and works:
 - `ols verify <archive>` — checks an archive is complete and untampered using
   only what is inside it.
 
+**S007d-001 is complete: NO_GO.** All 24 registered cells and archives verified,
+with 24 source-bound reviews. A completed the full guided task in 0/6 runs;
+B/C each had 0/6 qualifiers. Real partial tool use and two exposed fault-response
+examples are retained; they do not open expansion. See Builder
+`docs/experiments/2026-11-14-autonomy-baseline.md` and
+`docs/experiments/results/S007d-001.json`. Next is S007h, one bounded registered
+change and re-evaluation. No later campaign or improvement is implemented.
+
 **S007d benchmark tooling is implemented.**
 `python -m open_lab_simulation.benchmark run <manifest> --registration <commit>`
 executes at most four scheduled cells per invocation (override `--max-cells`).
@@ -331,9 +339,9 @@ GPU leasing remain S007e; no hosted provider is enabled.
 
 What does **not** exist yet:
 
-- **No experiment has been run.** One small model (`llama3.2:3b`) has driven
-  short engineering checks, and three more candidates were compared in
-  S003c. See the Builder's `docs/experiments/`.
+- **The registered S007d-001 baseline is complete with NO_GO.** Earlier local
+  runs remain engineering checks. Long philosophical-duration experiments and
+  expanded-capability campaigns remain future work; see Builder reports.
 - A reply without a tool call does not end a run: the runtime answers with
   the experiment's continuation message (recorded as an `environment.message`
   event) and the run continues to its step limit or deadline. Worlds built
