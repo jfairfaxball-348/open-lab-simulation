@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, ollama, recovery, resources
+from . import __version__, container, ollama, recovery, resources
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -100,15 +100,32 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
         for rule in kinds
     ):
         return "the world's contracts cannot record the discovery preamble; rebuild the world"
-    if config["permissions"].get("subprocess") or config.get("capabilities", {}).get(
-        "agent_created_tools"
-    ):
+    if config.get("capabilities", {}).get("agent_created_tools"):
+        return "agent-created tools are not implemented"
+    tier = world.manifest["environment"]["isolation"]["minimum_tier"]
+    if config["permissions"].get("subprocess") and tier != "container":
         return "running agent-supplied code needs the container isolation tier"
     if config["permissions"]["network"] == "allowlist":
         return "network access cannot be granted: this runtime cannot enforce an allowlist"
-    if world.manifest["environment"]["isolation"]["minimum_tier"] != "process":
-        return "the world needs the container isolation tier, which is not available"
+    if tier == "container":
+        for ident, (_, manifest) in sorted(world.capabilities.items()):
+            needed = manifest["permissions"]
+            if needed["network"] != "none" or needed.get("gpu"):
+                return (f"capability '{ident}' needs network or GPU access, which the "
+                        "container tier cannot provide")
     return None
+
+
+def _isolation(config: dict[str, Any], world: World) -> dict[str, Any]:
+    """Describe the isolation every capability call of this run will get, or refuse."""
+    if world.manifest["environment"]["isolation"]["minimum_tier"] != "container":
+        return {"tier": "process"}
+    try:
+        limits = container.container_limits(config["limits"].get("resources"))
+        described = container.Backend().probe()
+    except container.ContainerUnavailable as error:
+        raise LaunchError(f"the container isolation tier is not available: {error}") from None
+    return {**described, "distro": container.DISTRO, "limits": limits}
 
 
 def continuation_message(config: dict[str, Any], world: World) -> str | None:
@@ -199,7 +216,9 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
     return resolved
 
 
-def _prepare(config_path: Path, root: Path) -> tuple[bytes, dict[str, Any], World, dict[str, Any]]:
+def _prepare(
+    config_path: Path, root: Path
+) -> tuple[bytes, dict[str, Any], World, dict[str, Any], dict[str, Any]]:
     try:
         raw = config_path.read_bytes()
         config = json.loads(raw.decode("utf-8"))
@@ -235,7 +254,8 @@ def _prepare(config_path: Path, root: Path) -> tuple[bytes, dict[str, Any], Worl
         Registry(world.directory, world.capabilities)
     except RegistryError as error:
         raise LaunchError(str(error)) from None
-    return raw, config, world, _resolve_model(config, world)
+    isolation = _isolation(config, world)
+    return raw, config, world, _resolve_model(config, world), isolation
 
 
 def _new_run_id() -> str:
@@ -248,7 +268,7 @@ def run_experiment(
 ) -> RunResult:
     """Launch one fresh run. Operator pauses require configured checkpointing."""
     root = (root or data_root()).resolve()
-    raw, config, world, model = _prepare(config_path, root)
+    raw, config, world, model, isolation = _prepare(config_path, root)
     if pause_after_steps is not None and (pause_after_steps < 1 or "checkpointing" not in config):
         raise LaunchError("pausing needs checkpointing and a positive pause-after-steps value")
     run_id = _new_run_id()
@@ -258,7 +278,8 @@ def run_experiment(
     workspace.mkdir(parents=True)
     with run_lock(archive):
         result = _run_prepared(
-            raw, config, world, model, archive, workspace, pause_after_steps=pause_after_steps
+            raw, config, world, model, archive, workspace, isolation=isolation,
+            pause_after_steps=pause_after_steps,
         )
         return _continue_recovery(result, root, config, pause_after_steps)
 
@@ -290,7 +311,7 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     problems = verify_archive(archive, checkpoints=False, allow_interrupted=source == "startup")
     if problems:
         raise LaunchError(f"run archive cannot be resumed: {problems[0]}")
-    raw, config, world, model = _prepare(archive / "experiment.json", root)
+    raw, config, world, model, isolation = _prepare(archive / "experiment.json", root)
     settings = recovery.policy(config)
     events = [json.loads(line) for line in
               (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -379,6 +400,7 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
         model,
         archive,
         workspace,
+        isolation=isolation,
         resume=resume,
         pause_after_steps=pause_after_steps,
     )
@@ -486,9 +508,11 @@ def _interrupted_refusal(archive, detail):
 
 
 def _run_prepared(
-    raw, config, world, model, archive, workspace, *, resume=None, pause_after_steps=None
+    raw, config, world, model, archive, workspace, *, isolation, resume=None,
+    pause_after_steps=None,
 ):
     run_id, experiment_id = archive.name, config["experiment_id"]
+    contained = isolation["tier"] == "container"
     if resume is None:
         (archive / "experiment.json").write_bytes(raw)
         shutil.copyfile(world.directory / "world-release.json", archive / "world-release.json")
@@ -528,9 +552,18 @@ def _run_prepared(
         )
         state = to
 
+    # Resumed segments may run on a different backend build; each one is kept.
+    described_isolation = json.dumps(isolation, indent=2) + "\n"
+    if not resume:
+        (archive / "isolation.json").write_text(
+            described_isolation, encoding="utf-8", newline="\n"
+        )
     if resume:
         segments = archive / "segments"
         segments.mkdir(exist_ok=True)
+        (segments / f"isolation-{recorder.count:08d}.json").write_text(
+            described_isolation, encoding="utf-8", newline="\n"
+        )
         if (archive / "summary.json").exists():
             shutil.copyfile(archive / "summary.json", segments / f"{recorder.count:08d}.json")
             (archive / "summary.json").unlink()
@@ -606,6 +639,11 @@ def _run_prepared(
             "deny": capabilities.get("deny"),
             "model": model,
             "actor": agent,
+            "isolation": (
+                {"tier": "container", "run_id": run_id, "distro": isolation["distro"],
+                 "image": isolation["image"], "limits": isolation["limits"]}
+                if contained else {"tier": "process"}
+            ),
         }
         if resume:
             spec["runtime_state"] = resume["state"]
@@ -676,6 +714,22 @@ def _run_prepared(
     finally:
         if tree is not None:
             tree.kill()
+        if contained:
+            # Containers outlive the runtime's process tree; nothing of the run may.
+            try:
+                removed = container.Backend(isolation["distro"], isolation["image"]).sweep(run_id)
+            except container.ContainerUnavailable as error:
+                notes.append(f"containers of the run may still exist: {error}")
+                removed = []
+            if removed:
+                recorder.record(
+                    recorder="supervisor", type="supervisor.action", actor=supervisor,
+                    payload={"action": "terminated",
+                             "detail": f"removed {len(removed)} container(s) still present "
+                                       "after the runtime stopped",
+                             "extensions": {"stage": "container_cleanup"}},
+                )
+        if tree is not None:
             if controller is not None:
                 try:
                     controller.tick(tree, {}, force=True)
@@ -745,6 +799,7 @@ def _run_prepared(
                 else {}
             ),
         },
+        "isolation": {key: isolation[key] for key in ("tier", "image") if key in isolation},
         "simulation_version": __version__,
     }
     (archive / "summary.json").write_text(

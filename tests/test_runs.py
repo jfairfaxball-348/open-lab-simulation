@@ -355,7 +355,7 @@ def test_draft_and_missing_worlds_are_refused(root, release, make_config):
         ({"checkpointing": {"keep_last": 0}}, "invalid experiment configuration"),
         ({"termination": {"notify_agent_before_s": 10}}, "deadline notices"),
         ({"permissions": {"subprocess": True}}, "container isolation tier"),
-        ({"capabilities": {"agent_created_tools": True}}, "container isolation tier"),
+        ({"capabilities": {"agent_created_tools": True}}, "agent-created tools"),
         ({"permissions": {"network": "allowlist", "network_allowlist": ["example.org"]}},
          "allowlist"),
         ({"limits": {"wall_clock_s": 0}}, "invalid experiment configuration"),

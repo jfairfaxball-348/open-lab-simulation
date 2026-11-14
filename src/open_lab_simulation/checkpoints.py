@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 from .contracts import sha256_text
 from .ownership import archive_lock
+from .paths import is_link
 from .recorder import utc_now
 from .world import file_sha256
 
@@ -51,8 +52,17 @@ run_lock = archive_lock
 
 
 def _no_link(path):
-    if path.is_symlink() or path.is_junction():
+    if is_link(path):
         raise CheckpointError("snapshot paths cannot be links")
+
+
+def _entries(workspace):
+    """Every path beneath the workspace, links included but never entered."""
+    for directory, subdirectories, names in os.walk(workspace):
+        for name in [*subdirectories, *names]:
+            yield Path(directory, name)
+        subdirectories[:] = [name for name in subdirectories
+                             if not is_link(Path(directory, name))]
 
 
 def _member_path(name):
@@ -95,7 +105,7 @@ def memory_backup(source: Path | None, target: Path, check=lambda: None):
 
 def _workspace_snapshot(workspace, target, check):
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        for path in sorted(workspace.rglob("*")):
+        for path in sorted(_entries(workspace)):
             check()
             _no_link(path)
             name = path.relative_to(workspace).as_posix()

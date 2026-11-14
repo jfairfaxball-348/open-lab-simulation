@@ -10,6 +10,8 @@ import sys
 import threading
 import time
 
+from .paths import walk_files
+
 MIB = 1024**2
 
 
@@ -46,15 +48,15 @@ def validate(config):
 
 
 def workspace_bytes(workspace):
+    def refuse(_path):
+        raise ValueError("workspace quota cannot follow links")
+
     total = 0
-    for path in workspace.rglob("*"):
-        if path.is_symlink() or path.is_junction():
-            raise ValueError("workspace quota cannot follow links")
-        if path.is_file():
-            try:
-                total += path.stat().st_size
-            except FileNotFoundError:
-                pass  # a concurrent SQLite sidecar may have been removed
+    for path in walk_files(workspace, on_link=refuse):
+        try:
+            total += path.stat().st_size
+        except FileNotFoundError:
+            pass  # a concurrent SQLite sidecar may have been removed
     return total
 
 

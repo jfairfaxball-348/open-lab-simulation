@@ -20,9 +20,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .container import Backend
 from .model import ModelClient, ModelError, OpenAIChatModel, ScriptedModel
 from .registry import META_TOOLS, PREAMBLE, Registry
-from .toolhost import ToolHost
+from .toolhost import Sandbox, ToolHost
 
 MAX_OUTPUT_CHARS = 100_000
 
@@ -227,6 +228,11 @@ def main() -> int:
             chosen.get("context_tokens"),
         )
     actor = spec["actor"]
+    isolation = spec.get("isolation", {"tier": "process"})
+    sandbox = None
+    if isolation["tier"] == "container":
+        sandbox = Sandbox(Backend(isolation["distro"], isolation["image"]), release,
+                          isolation["run_id"], isolation["limits"])
     host = ToolHost(
         capabilities,
         Path(spec["workspace"]),
@@ -237,6 +243,7 @@ def main() -> int:
         deny=spec.get("deny"),
         registry=Registry(release, capabilities),
         admission=lambda: channel.denial,
+        sandbox=sandbox,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(

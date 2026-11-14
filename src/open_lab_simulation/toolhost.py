@@ -21,6 +21,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from .container import WORKSPACE_MOUNT, Backend, ContainerUnavailable, container_name
 from .paths import minimal_environment
 from .registry import META_SCHEMAS, Registry
 
@@ -71,6 +72,7 @@ class ToolHost:
         deny: list[str] | None = None,
         registry: Registry | None = None,
         admission=None,
+        sandbox: Sandbox | None = None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -82,6 +84,7 @@ class ToolHost:
         self._calls = 0
         self.registry = registry
         self.admission = admission
+        self.sandbox = sandbox
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -176,12 +179,17 @@ class ToolHost:
             return {"status": "error", "error": f"invalid_input: {problem}"}
 
         invocation = manifest["invocation"]
+        # Inside a container the interpreter is the image's, and the runner is passed
+        # as source so that no Simulation file is mounted into the sandbox.
+        python = "python" if self.sandbox else sys.executable
         if invocation["interface"] == "python":
-            command = [sys.executable, "-I", "-B", str(_RUNNER), invocation["entrypoint"]]
+            runner = (["-c", _RUNNER.read_text(encoding="utf-8")] if self.sandbox
+                      else [str(_RUNNER)])
+            command = [python, "-I", "-B", *runner, invocation["entrypoint"]]
         elif invocation["interface"] == "subprocess":
             command = list(invocation["command"])
             if command[0] == "python":
-                command[0] = sys.executable
+                command[0] = python
         else:
             return {
                 "status": "error",
@@ -189,24 +197,36 @@ class ToolHost:
             }
 
         extra = {}
+        filesystem = manifest["permissions"]["filesystem"]
         # The workspace is the only place a capability is ever told about.
-        if manifest["permissions"]["filesystem"] != "none":
-            extra["OPEN_LAB_WORKSPACE"] = str(self.workspace)
+        if filesystem != "none":
+            extra["OPEN_LAB_WORKSPACE"] = (WORKSPACE_MOUNT if self.sandbox
+                                           else str(self.workspace))
         timeout_s = manifest.get("resources", {}).get("timeout_s", DEFAULT_TIMEOUT_S)
-        try:
-            done = subprocess.run(  # noqa: S603 - argument vector, never a shell
-                command,
-                input=json.dumps(arguments).encode("utf-8"),
-                capture_output=True,
-                cwd=directory,
-                env=minimal_environment(extra),
-                timeout=timeout_s,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return {"status": "timeout", "error": f"no result within {timeout_s} s"}
-        except OSError as error:
-            return {"status": "error", "error": f"execution_error: {error.strerror or error}"}
+        stdin = json.dumps(arguments).encode("utf-8")
+        if self.sandbox:
+            done = self.sandbox.run(directory, self.workspace, filesystem, command, extra,
+                                    stdin, timeout_s)
+            if isinstance(done, str):
+                return {"status": "error", "error": f"execution_error: {done}"}
+            if done.timed_out:
+                return {"status": "timeout", "error": f"no result within {timeout_s} s"}
+        else:
+            try:
+                done = subprocess.run(  # noqa: S603 - argument vector, never a shell
+                    command,
+                    input=stdin,
+                    capture_output=True,
+                    cwd=directory,
+                    env=minimal_environment(extra),
+                    timeout=timeout_s,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return {"status": "timeout", "error": f"no result within {timeout_s} s"}
+            except OSError as error:
+                return {"status": "error",
+                        "error": f"execution_error: {error.strerror or error}"}
 
         try:
             payload = json.loads(done.stdout.decode("utf-8"))
@@ -228,3 +248,31 @@ class ToolHost:
         if problem:
             return {"status": "error", "error": f"invalid_output: {problem}"}
         return {"status": "ok", "result": payload}
+
+
+class Sandbox:
+    """Runs capability processes in containers for one run (the ``container`` tier)."""
+
+    def __init__(self, backend: Backend, world: Path, run_id: str, limits: dict[str, Any]):
+        self.backend = backend
+        self.world = world
+        self.run_id = run_id
+        self.limits = limits
+
+    def run(self, directory: Path, workspace: Path, filesystem: str, command: list[str],
+            env: dict[str, str], stdin: bytes, timeout_s: int):
+        """The finished process, or a message saying why no container could run."""
+        name = container_name(self.run_id)
+        environment = {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8", **env}
+        try:
+            vector = self.backend.command(
+                name=name, run_id=self.run_id, world=self.world, capability_dir=directory,
+                workspace=None if filesystem == "none" else workspace,
+                writable=filesystem == "workspace_write", argv=command, env=environment,
+                limits=self.limits, timeout_s=timeout_s,
+            )
+            return self.backend.run(vector, name, stdin, timeout_s, minimal_environment())
+        except ContainerUnavailable as error:
+            return f"container backend unavailable: {error}"
+        except OSError as error:
+            return f"wsl.exe: {error.strerror or error}"

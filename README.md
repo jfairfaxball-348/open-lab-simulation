@@ -245,12 +245,19 @@ What does **not** exist yet:
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
   window is whatever the server uses by default.
-- Container isolation remains unavailable. Unsupported limits and isolation
-  configurations are refused. Resource ceilings above apply to the process tier.
-- Isolation is the *process tier*: an architectural boundary for capabilities
-  written by the Builder, not a sandbox. Nothing here is safe for running
-  agent-written code.
-- Process-tree termination has only been run on Windows.
+- The *container tier* (S006c) exists for Windows hosts only: a world with
+  `minimum_tier: container` runs every capability call in a fresh rootless
+  Podman container in WSL 2 (pinned base image, verified world read-only, the
+  workspace as the only host mount, no network, no Linux capabilities, read-only
+  root, memory/CPU/process ceilings). It launches only when the backend probe
+  passes; containerised capabilities cannot be granted network or GPU. The
+  backend is recorded in `isolation.json`. No shipped capability runs
+  agent-supplied code yet, and agent-created tools are refused.
+- Worlds on the *process tier* remain an architectural boundary for
+  capabilities written by the Builder, not a sandbox.
+- Process-tree termination and the container tier have only been run on
+  Windows. The container escape/limit tests skip when the backend is absent;
+  `OPEN_LAB_REQUIRE_CONTAINER=1` makes them fail instead.
 
 ## Quick start
 

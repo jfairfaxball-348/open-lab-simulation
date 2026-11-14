@@ -10,13 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
-import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .contracts import Contracts, canonical_json
+from .paths import walk_files
 from .recorder import Recorder
 
 # Larger files are recorded by digest only.
@@ -71,17 +71,9 @@ class WorkspaceScanner:
                     self._known.pop(payload["path"], None)
 
     def _files(self) -> dict[str, Path]:
-        found = {}
-        for directory, subdirectories, names in os.walk(self.workspace):
-            # A link could point anywhere on the host; never follow or preserve one.
-            subdirectories[:] = [
-                d for d in subdirectories if not os.path.islink(os.path.join(directory, d))
-            ]
-            for name in names:
-                path = Path(directory, name)
-                if not path.is_symlink() and path.is_file():
-                    found[path.relative_to(self.workspace).as_posix()] = path
-        return found
+        # A link could point anywhere on the host; never follow or preserve one.
+        return {path.relative_to(self.workspace).as_posix(): path
+                for path in walk_files(self.workspace)}
 
     def _preserve(self, path: Path) -> tuple[str, int, bool] | None:
         """Hash a file and copy it into the store. None if it cannot be read right now."""
