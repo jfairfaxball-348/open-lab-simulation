@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, ollama, recovery
+from . import __version__, ollama, recovery, resources
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -225,6 +225,7 @@ def _prepare(config_path: Path, root: Path) -> tuple[bytes, dict[str, Any], Worl
         raise LaunchError(f"invalid experiment configuration: {problems[0]}")
     try:
         recovery.policy(config)
+        resources.validate(config)
     except ValueError as error:
         raise LaunchError(str(error)) from None
     reason = _unsupported(config, world)
@@ -573,7 +574,9 @@ def _run_prepared(
     stderr_log = (archive / "runtime.stderr.log").open("ab" if resume else "wb")
     final, reason = "failed", "supervisor error"
     accounting = None
+    controller = None
     try:
+        controller = resources.Controller(config, workspace, world, recorder)
         if recovery.policy(config):
             accounting = recovery.Accounting(archive, elapsed_offset)
         tree = ProcessTree(
@@ -582,7 +585,9 @@ def _run_prepared(
             stdout=-1,
             stderr=stderr_log,
             env=minimal_environment(),
+            resources=config["limits"].get("resources"),
         )
+        controller.installed()
         capabilities = config.get("capabilities", {})
         spec = {
             "release_dir": str(world.directory),
@@ -647,6 +652,7 @@ def _run_prepared(
             accounting=accounting,
             health=(recovery.HealthMonitor(model, recovery.policy(config))
                     if accounting and model["real_model"] else None),
+            controller=controller,
         )
         if final == "terminated":
             change("stopping", reason)
@@ -665,8 +671,17 @@ def _run_prepared(
         change("stopping", reason)
     except (OSError, RecordError, ValueError) as error:
         notes.append(f"supervisor error: {type(error).__name__}: {error}")
+        if controller is not None:
+            controller.action("terminated", "monitoring", "resource setup or monitoring failed")
     finally:
         if tree is not None:
+            tree.kill()
+            if controller is not None:
+                try:
+                    controller.tick(tree, {}, force=True)
+                except (OSError, ValueError):
+                    controller.action("terminated", "monitoring",
+                                      "final resource sample unavailable")
             tree.close()
         stderr_log.close()
         if accounting:
@@ -751,6 +766,7 @@ def _supervise(
     termination=None,
     accounting=None,
     health=None,
+    controller=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -769,11 +785,13 @@ def _supervise(
     deadline_requested = False
     deadline_checkpointed = False
     open_calls: dict[str, str] = {}  # correlation id -> capability id
+    denied_calls: set[str] = set()
     ended: dict[str, Any] | None = None
     last_seq: int | None = None
     next_checkpoint = time.monotonic()
     pause_requested = False
     stop_sent = False
+    last_denial = None
 
     def refuse(message: str) -> None:
         recorder.record(
@@ -803,8 +821,9 @@ def _supervise(
             )
 
     def handle(line: bytes, *, stopped: bool = False) -> None:
-        nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed
+        nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
         last_seq = None
+        last_denial = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
@@ -889,10 +908,15 @@ def _supervise(
                 ):
                     target = candidate
             open_calls[event["correlation_id"]] = target
+            if controller is not None and not stopped:
+                last_denial = controller.admit(target)
+                if last_denial:
+                    denied_calls.add(event["correlation_id"])
         elif kind == "tool.result":
             # The runtime is waiting for the acknowledgement, so whatever changed
             # in the workspace since the last scan happened during this call.
             capability_id = open_calls.pop(event["correlation_id"], None)
+            denied_calls.discard(event["correlation_id"])
             producer: dict[str, Any] = {
                 "kind": "tool",
                 "tool_call_correlation_id": event["correlation_id"],
@@ -924,7 +948,8 @@ def _supervise(
     def acknowledge() -> None:
         try:
             process.stdin.write(
-                (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent}) + "\n").encode()
+                (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent,
+                             "deny": last_denial}) + "\n").encode()
             )
             process.stdin.flush()
         except OSError:
@@ -950,11 +975,29 @@ def _supervise(
         )
         return "terminated", "deadline"
 
+    def resource_stop():
+        if controller is None:
+            return None
+        try:
+            limit = controller.tick(tree, {k: v for k, v in open_calls.items()
+                                           if k not in denied_calls})
+        except (OSError, ValueError):
+            limit = "monitoring"
+        if limit is None:
+            return None
+        tree.kill()
+        _drain(messages, lambda line: handle(line, stopped=True))
+        controller.action("terminated", limit, f"resource enforcement stopped the tree: {limit}")
+        return "terminated", f"resource_limit:{limit}"
+
     while ended is None:
         request_deadline()
         remaining = hard_deadline - time.monotonic()
         if remaining <= 0:
             return deadline_stop()
+        stopped_by_resource = resource_stop()
+        if stopped_by_resource:
+            return stopped_by_resource
         if accounting is not None and (
             accounting.error is not None or time.monotonic() >= accounting.lease_deadline
         ):
@@ -976,7 +1019,7 @@ def _supervise(
                     return "failed", "model health check failed"
         try:
             # Wake at the nominal deadline even when there is a grace allowance.
-            wait = min(remaining, 0.25)
+            wait = min(remaining, 0.05 if controller is not None else 0.25)
             if accounting is not None:
                 wait = min(wait, max(0.001, accounting.lease_deadline - time.monotonic()))
             if not deadline_requested and graceful:
@@ -991,11 +1034,17 @@ def _supervise(
             pause_requested = True
             continue
         if line is None:
+            stopped_by_resource = resource_stop()
+            if stopped_by_resource:
+                return stopped_by_resource
             code = process.wait()
             return "failed", f"the agent runtime exited unexpectedly (status {code})"
         if time.monotonic() >= hard_deadline:
             return deadline_stop(line)
         handle(line)
+        stopped_by_resource = resource_stop()
+        if stopped_by_resource:
+            return stopped_by_resource
         if deadline_checkpointed:
             # The worker is still waiting for this barrier's acknowledgement.
             # Kill before acknowledging, so another model step cannot start.

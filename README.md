@@ -114,7 +114,63 @@ without changing the record. Physical reboot/power-loss durability, Linux and
 large-run/uninterruptible host-I/O timing are unverified. See the Builder's
 ADR-0011 and `docs/experiments/2026-11-14-supervisor-recovery.md`.
 
-Resource enforcement and sampling remain S006e. Manual resume normally needs a
+**S006e resources and sampling are implemented.** Experiment
+`limits.resources` accepts `ram_mb`, `max_processes`, `cpu_cores` and `disk_mb`:
+
+```json
+"limits": {
+  "wall_clock_s": 20,
+  "resources": {"ram_mb": 256, "max_processes": 8, "cpu_cores": 1, "disk_mb": 1}
+}
+```
+
+On Windows, RAM is the Job Object's aggregate committed-memory ceiling, process
+count includes Python/venv launchers and capabilities, and CPU is a hard cycle
+rate `floor(cpu_cores / logical_processors * 10000)` out of 10000. The runtime
+starts suspended, joins the configured job, then resumes, so the venv redirector
+cannot spawn outside it. Limits are installed again on each recovery/resume.
+CPU settings outside the host's representable range and hosts with more than
+64 logical processors are refused. CPU active-time samples are a different
+measurement from the kernel cycle budget; short intervals need not equal the
+nominal core-equivalent rate. RAM/process-count limit notifications cause tree
+termination and a supervisor action. Windows notification delivery is best
+effort; the OS ceilings remain in effect even if a notification is missed.
+
+`disk_mb` is a supervisor workspace quota, checked at writing-capability
+admission and every 0.1 seconds while supervising. At the quota, all further
+writing capabilities (including demonstrations) are denied; reads remain
+available. An active writer observed above quota is killed with the runtime
+tree. A completed write may overshoot before the next check, then future writes
+are denied. This is not an OS filesystem quota. It counts logical file bytes,
+including memory/SQLite sidecars, and excludes the archive and model files.
+Unreadable/link-containing workspaces fail closed. A conservative denial latch
+lasts for that segment. Resource termination does not automatically restart.
+
+Periodic supervisor `resource.sample` events default to one second; override
+with `extensions.resource_sampling.interval_s` (finite 0.05–60 seconds). CPU is
+100 percent per logical core from job accounting, RAM is aggregate process
+private commit, process count is job accounting, and workspace disk is logical
+file size. First CPU samples or racing/inaccessible process-memory queries may
+be unavailable. Missing numeric values are omitted and named in
+`payload.extensions.unavailable`; observed zero remains numeric zero.
+
+When existing `nvidia-smi` is usable, an asynchronous two-second-bounded read
+samples aggregate host NVIDIA VRAM used/available. Samples record its scope and
+age (up to ten seconds); it is not attributed to this run. The sampler never
+installs a driver/tool or blocks the deadline thread. Model servers and the
+supervisor live outside the runtime job. `vram_mb` limits (even zero) and nested
+resource `wall_clock_s` are refused; use the experiment's top-level deadline.
+`max_model_tokens` is also explicitly refused until it can be enforced. On
+non-Windows platforms requested CPU/RAM/process-count limits are refused;
+missing job measurements are marked unavailable. Linux execution is unverified.
+
+```bash
+uv run ols run experiments/scripted-resources.json
+uv run ols verify <archive printed above>
+```
+
+See Builder ADR-0012 and `docs/experiments/2026-11-14-resource-enforcement.md`.
+Manual resume normally needs a
 stopped run with a summary; a failed recovery-enabled run cannot bypass the
 remaining retry budget by manual resume. Deadline notices are still refused. Snapshot deadline
 checks are cooperative between I/O chunks; uninterruptible host I/O and
@@ -189,8 +245,8 @@ What does **not** exist yet:
   events carry the model id `scripted`. The test suite never calls a model.
 - One model per run, one provider kind (Ollama on this machine). The context
   window is whatever the server uses by default.
-- No resource limits beyond the deadline and step count, or container isolation.
-  Configurations that ask for any of these are refused, not approximated.
+- Container isolation remains unavailable. Unsupported limits and isolation
+  configurations are refused. Resource ceilings above apply to the process tier.
 - Isolation is the *process tier*: an architectural boundary for capabilities
   written by the Builder, not a sandbox. Nothing here is safe for running
   agent-written code.
@@ -268,6 +324,7 @@ runtime.stderr.log     anything the runtime process wrote to stderr
 src/open_lab_simulation/
   supervisor.py   experiment manager and supervisor (the parent process)
   recovery.py     opt-in policy, active-time ledger and asynchronous health probes
+  resources.py    supervisor quota admission, periodic samples and GPU probe
   ownership.py    OS writer guard and verified process birth identities
   worker.py       agent runtime (the child process) and the agent loop
   toolhost.py     capability invocation, permissions, tool.call / tool.result

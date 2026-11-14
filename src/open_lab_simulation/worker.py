@@ -33,6 +33,7 @@ class Channel:
         self._out = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
         os.dup2(2, 1)
         self._in = sys.stdin.buffer
+        self.denial = None
 
     def read(self) -> dict[str, Any]:
         line = self._in.readline()
@@ -44,7 +45,9 @@ class Channel:
         """Have an event recorded; returns its sequence number once it is on record."""
         self._out.write(json.dumps({"event": request}) + "\n")
         self._out.flush()
-        seq = self.read().get("seq")
+        acknowledgement = self.read()
+        self.denial = acknowledgement.get("deny")
+        seq = acknowledgement.get("seq")
         return seq if isinstance(seq, int) else None
 
     def end(self, reason: str, steps: int) -> None:
@@ -233,6 +236,7 @@ def main() -> int:
         allow=spec.get("allow"),
         deny=spec.get("deny"),
         registry=Registry(release, capabilities),
+        admission=lambda: channel.denial,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(

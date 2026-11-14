@@ -207,7 +207,13 @@ def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
     result = run_experiment(model_config(limits={"wall_clock_s": 60, "max_steps": 3}), model_root)
     assert (result.state, result.reason) == ("terminated", "max_steps")
     events = events_of(result.archive)
-    sequence = [e["type"] for e in events if e["type"] != "run.state_changed"]
+    # S006e supervisor telemetry may interleave with the unchanged conversation.
+    samples = [e for e in events if e["type"] == "resource.sample"]
+    assert len(samples) >= 2
+    assert all(e["recorder"] == "supervisor" and e["epistemic_status"] == "observed"
+               for e in samples)
+    sequence = [e["type"] for e in events
+                if e["type"] not in ("run.state_changed", "resource.sample")]
     assert sequence == [
         "environment.message",                                    # generic system preamble
         "model.call", "agent.output", "environment.message",       # no tool call: continue
@@ -223,7 +229,9 @@ def test_a_reply_without_a_tool_call_is_answered_with_the_continuation(
         assert message["recorder"] == "agent_runtime" and message["actor"] == {"kind": "system"}
         assert message["epistemic_status"] == "observed"
         answered = events[message["payload"]["after_seq"]]
-        assert answered["type"] == "agent.output" and answered["seq"] == message["seq"] - 1
+        assert answered["type"] == "agent.output" and answered["seq"] < message["seq"]
+        assert all(e["type"] == "resource.sample"
+                   for e in events[answered["seq"] + 1:message["seq"]])
     # The model was given exactly the recorded text, as a user turn, and nothing else.
     assert server.requests[1]["messages"] == [
         {"role": "system", "content": PREAMBLE},

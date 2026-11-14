@@ -70,6 +70,7 @@ class ToolHost:
         allow: list[str] | None = None,
         deny: list[str] | None = None,
         registry: Registry | None = None,
+        admission=None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -80,6 +81,7 @@ class ToolHost:
         self.deny = set(deny or [])
         self._calls = 0
         self.registry = registry
+        self.admission = admission
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -105,7 +107,9 @@ class ToolHost:
         })
 
         started = time.monotonic()
-        outcome = (self._discovery(capability_id, arguments) if self.registry is not None
+        denied = self.admission() if self.admission is not None else None
+        outcome = ({"status": "denied", "error": denied} if denied else
+                   self._discovery(capability_id, arguments) if self.registry is not None
                    else self._run(capability_id, arguments))
         outcome["duration_ms"] = int((time.monotonic() - started) * 1000)
         self.emit({
