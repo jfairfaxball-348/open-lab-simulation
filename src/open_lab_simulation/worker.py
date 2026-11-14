@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .model import ModelClient, ScriptedModel
+from .model import ModelClient, ModelError, OpenAIChatModel, ScriptedModel
 from .toolhost import ToolHost
 
 MAX_OUTPUT_CHARS = 100_000
@@ -61,7 +61,14 @@ def run_loop(
     steps = 0
     while max_steps is None or steps < max_steps:
         started = time.monotonic()
-        reply = model.chat(messages)
+        try:
+            reply = model.chat(messages)
+        except ModelError as error:
+            emit({
+                "recorder": "agent_runtime", "type": "error", "actor": {"kind": "system"},
+                "payload": {"origin": "model", "message": str(error), "recoverable": False},
+            })
+            return "model_error", steps
         if reply is None:
             return "model_finished", steps
         steps += 1
@@ -70,6 +77,7 @@ def run_loop(
             "payload": {
                 "model_id": model.model_id, "purpose": "orchestration",
                 "duration_ms": int((time.monotonic() - started) * 1000),
+                **reply.details,
             },
         })
         output: dict[str, Any] = {"text": reply.text[:MAX_OUTPUT_CHARS]}
@@ -77,12 +85,22 @@ def run_loop(
             output["truncated"] = True
         emit({"recorder": "agent_runtime", "type": "agent.output", "actor": actor,
               "payload": output})
-        messages.append({"role": "assistant", "content": reply.text,
-                         "tool_calls": reply.tool_calls})
+        # The conversation is kept in the chat-completions shape, as the model wrote it.
+        said: dict[str, Any] = {"role": "assistant", "content": reply.text}
+        if reply.tool_calls:
+            said["tool_calls"] = [
+                {"id": call.id, "type": "function",
+                 "function": {"name": call.name, "arguments": call.raw_arguments}}
+                for call in reply.tool_calls
+            ]
+        messages.append(said)
         for call in reply.tool_calls:
-            call = call if isinstance(call, dict) else {}
-            result = host.call(call.get("capability_id"), call.get("arguments"))
-            messages.append({"role": "tool", "content": json.dumps(result)})
+            result = host.call(call.capability_id, call.arguments)
+            messages.append({"role": "tool", "tool_call_id": call.id,
+                             "content": json.dumps(result)})
+        if not reply.tool_calls and model.ends_without_tool_calls:
+            # Nobody else speaks in a run, so there is nothing for the model to answer.
+            return "no_tool_calls", steps
     return "max_steps", steps
 
 
@@ -95,8 +113,21 @@ def main() -> int:
         path = release / entry["manifest_path"]
         capabilities[entry["id"]] = (path.parent, json.loads(path.read_text(encoding="utf-8")))
 
-    model = ScriptedModel(spec["scripted_replies"])
-    actor = {"kind": "agent", "model_id": model.model_id}
+    chosen = spec["model"]
+    model: ModelClient
+    if chosen["kind"] == "scripted":
+        model = ScriptedModel(chosen["replies"])
+    else:
+        allow, deny = spec.get("allow"), set(spec.get("deny") or [])
+        offered = [
+            manifest for capability_id, (_, manifest) in capabilities.items()
+            if capability_id not in deny and (allow is None or capability_id in allow)
+        ]
+        model = OpenAIChatModel(
+            chosen["model_id"], chosen["base_url"], chosen["provider_ref"], offered,
+            chosen.get("sampling"), chosen.get("context_tokens"),
+        )
+    actor = spec["actor"]
     host = ToolHost(
         capabilities, Path(spec["workspace"]), spec["permissions"], channel.emit, actor,
         allow=spec.get("allow"), deny=spec.get("deny"),

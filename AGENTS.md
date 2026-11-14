@@ -35,8 +35,14 @@ What follows is only what is specific to this repository.
 - **Record observations, not interpretations.** No event may state what an
   agent wants, feels or believes. Stated goals are `agent.statement` events
   with `epistemic_status: agent_claim`.
-- **No real model in the test suite.** Tests use the scripted stand-in. Checks
-  against a real model are separate, documented manual steps.
+- **No real model in the test suite.** Tests use the scripted stand-in or a
+  fake model server. Checks against a real model are separate manual steps,
+  recorded in the Builder's `docs/experiments/`.
+- **Model servers are loopback only.** The model client refuses any other
+  host. An external provider needs a decision record first.
+- **Never record a reasoning channel.** Only the reply text and tool calls a
+  model emits are recorded. A repair may change what is executed, never what
+  is recorded as said, and every repair is itself recorded.
 - Capabilities that execute agent-supplied code need the container isolation
   tier. Do not add a way to run them on the process tier.
 - `tests/fixtures/worlds/` holds a release built by the Builder. Do not edit it
@@ -54,6 +60,7 @@ What follows is only what is specific to this repository.
 | `uv run ruff check .` | Lint |
 | `uv run ols run <experiment.json> [--data-root DIR]` | Launch and supervise one run |
 | `uv run ols verify <archive>` | Check a run archive |
+| `uv run ols measure-model <base-url> <model>` | Measure a model on the local Ollama server |
 
 ## Code conventions
 

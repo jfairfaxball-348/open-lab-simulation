@@ -30,6 +30,8 @@ class World:
     contracts: Contracts
     # capability id -> (directory, manifest)
     capabilities: dict[str, tuple[Path, dict[str, Any]]] = field(default_factory=dict)
+    # provider id -> model-provider manifest
+    providers: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def digest(self) -> str:
@@ -86,4 +88,10 @@ def load_world(release_dir: Path, expected_digest: str | None = None) -> World:
         if problems or document["id"] != entry["id"]:
             raise WorldError(f"capability '{entry['id']}' has an invalid manifest")
         world.capabilities[entry["id"]] = (path.parent, document)
+    for entry in manifest["model_manifests"]:
+        document = json.loads((release_dir / entry["manifest_path"]).read_text(encoding="utf-8"))
+        problems = contracts.validate(document, "model-provider")
+        if problems or document["provider"]["id"] != entry["provider_id"]:
+            raise WorldError(f"model provider '{entry['provider_id']}' has an invalid manifest")
+        world.providers[entry["provider_id"]] = document
     return world

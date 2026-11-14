@@ -11,7 +11,14 @@ never code.
 
 ## Status
 
-**S003a (runtime skeleton) is complete.** What exists and works:
+**S003a (runtime skeleton) and S003b (local model) are complete.** What exists
+and works:
+
+- A chat model client for a local Ollama server (OpenAI-compatible endpoint)
+  with tool calling, repair of malformed tool calls, one retry, and a
+  context-length guard. The exact model (digest, server version, sampling) is
+  written to `model.json` in the archive. `ols measure-model` reports a
+  model's memory, load time and speed.
 
 - `ols run <experiment.json>` — verifies the world release, creates a fresh
   workspace and run archive, starts the agent runtime as a child process and
@@ -29,11 +36,16 @@ never code.
 
 What does **not** exist yet:
 
-- **No model is called.** The only model client is a scripted stand-in that
-  replays fixed replies from the experiment configuration. Its events carry
-  the model id `scripted`. A scripted run is an engineering check and says
-  nothing about how any agent behaves.
-- No capability discovery, memory, checkpoints, crash recovery, resource
+- **No experiment has been run.** One small model (`llama3.2:3b`) has driven
+  short engineering checks. It calls tools correctly when asked to; without
+  instruction it mostly does not, and a run ends at the first reply that
+  contains no tool call. See the Builder's `docs/experiments/`.
+- The scripted stand-in remains for tests: it replays fixed replies and its
+  events carry the model id `scripted`. The test suite never calls a model.
+- One model per run, one provider kind (Ollama on this machine). The context
+  window is whatever the server uses by default.
+- No capability discovery (capabilities are presented to the model directly
+  as tools), memory, checkpoints, crash recovery, resource
   limits beyond the deadline and step count, or container isolation.
   Configurations that ask for any of these are refused, not approximated.
 - Isolation is the *process tier*: an architectural boundary for capabilities
@@ -62,6 +74,12 @@ uv run ols run experiments/scripted-smoke.json
 uv run ols verify <archive directory printed by the run>
 ```
 
+With a model pulled into Ollama and world `minimal` 0.2.0 published:
+
+```bash
+uv run ols run experiments/local-model-check.json
+```
+
 The data root is `$OPEN_LAB_DATA`, or `open-lab-data` in the home directory:
 
 ```
@@ -78,7 +96,7 @@ ols run (supervisor process)
   ├─ validates the experiment against the contracts bundled in that release
   ├─ creates the archive and an empty workspace; owns the recorder
   └─ agent runtime (child process; knows the workspace, not the archive)
-       ├─ model client  → scripted stand-in
+       ├─ model client  → scripted stand-in, or a local model server (loopback only)
        └─ tool host     → one child process per capability call
 ```
 
@@ -97,6 +115,7 @@ events.jsonl           the record: one canonical JSON event per line, hash-chain
 artifacts/index.jsonl  artifact metadata records
 artifacts/sha256/..    preserved file contents, by digest
 summary.json           final state, counts, world digest
+model.json             exactly which model drove the run
 runtime.stderr.log     anything the runtime process wrote to stderr
 ```
 
@@ -107,7 +126,8 @@ src/open_lab_simulation/
   supervisor.py   experiment manager and supervisor (the parent process)
   worker.py       agent runtime (the child process) and the agent loop
   toolhost.py     capability invocation, permissions, tool.call / tool.result
-  model.py        model client interface and the scripted stand-in
+  model.py        model client interface, scripted stand-in, chat model client
+  ollama.py       model identity and measurement through Ollama's own API
   recorder.py     the single writer of the event log
   artifacts.py    workspace scanning and preservation
   proctree.py     kill a process and all its descendants
