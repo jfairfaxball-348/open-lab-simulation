@@ -11,6 +11,7 @@ import json
 import shutil
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -51,6 +52,9 @@ class Upstream:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 upstream.requests.append({"headers": dict(self.headers), "body": body})
                 step = upstream.script.pop(0) if upstream.script else (200, TEXT)
+                if isinstance(step, tuple) and step[0] == "slow":  # ("slow", seconds, step)
+                    time.sleep(step[1])
+                    step = step[2]
                 if step == "drop":
                     self.close_connection = True
                     self.wfile.flush()
