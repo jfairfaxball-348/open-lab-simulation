@@ -16,11 +16,15 @@ S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
 invalid-input/degenerate cases and deny lists are tested through the supervisor;
 the statistics capabilities need no filesystem/network permission. A separate
 `experiments/s008c-scripted.json` archive verifies without any real model call.
-The four-cell hosted check is prepared in `campaigns/s008c-001.json` and
-`scripts/s008c_check.py`; its first launch requires a recorded owner confirmation
-of quota availability (`--quota-clearance`). No S008c hosted request has been
-made, and the milestone remains incomplete. Earlier 0.6.0/0.7.0 fixtures remain
-unchanged. Runtime, provider, context, continuation and repair code are unchanged.
+The four-cell hosted check in `campaigns/s008c-001.json` and
+`scripts/s008c_check.py` is now complete after recorded owner quota clearance.
+All four 32-step archives verify: guided used both tools/results; C regression
+use/result use occurred in 2/3 runs, description use in 0/3. Exactly 128 requests,
+no replacement, repair or provider censoring. The runner refuses any additional
+cell after four starts. Earlier 0.6.0/0.7.0 fixtures remain unchanged. Runtime,
+provider, context, continuation and repair code are unchanged. Builder's
+`docs/experiments/2026-11-15-statistics-capability-check.md` records results and
+limits; S010 is next, without a new hosted-run allowance.
 
 S007e adds supervisor-mediated `models.ask` in minimal world 0.7.0. A hosted
 orchestrator can consult the approved installed local llama3.2:3b through one
