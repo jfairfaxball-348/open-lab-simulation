@@ -239,6 +239,19 @@ examples are retained; they do not open expansion. See Builder
 `docs/experiments/2026-11-14-autonomy-baseline.md` and
 `docs/experiments/results/S007d-001.json`.
 
+**Hosted provider broker (S014b) is implemented; no hosted adapter is yet.**
+A world or catalog model whose provider has `locality: external` is reached only
+through a loopback broker inside the supervisor (ADR-0016): the runtime sends its
+usual chat-completions requests with a per-run token, and the broker alone reads
+the provider credential (Windows DPAPI, under the user profile), reserves budget
+in `<data root>/providers/<id>/ledger.jsonl` before every attempt (retries
+included; unknown outcomes count as spent), sends one request at a time and
+mirrors each request into the run's `provider-ledger.jsonl`. Launch is refused
+unless the provider is implemented, enabled, budgeted and credentialed; hosted
+runs refuse automatic recovery; nothing falls back to another model. Owner
+administration: `ols provider status|set-key|clear-key|configure <id>` (the key
+is typed at a hidden prompt, never passed as an argument).
+
 **S007h-001 is complete: NO_GO.** The same frozen design with one change, the
 installed `qwen3:4b` as orchestrator (`campaigns/s007h-001.json`; runtime source
 unchanged). 24/24 cells verified and reviewed; every cell reached the 600 s
