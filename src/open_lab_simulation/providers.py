@@ -15,6 +15,7 @@ carries the approved ceilings. The experiment cannot raise them.
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
 import os
@@ -33,13 +34,16 @@ from typing import Any, Protocol
 
 from . import credentials
 from .contracts import canonical_json, sha256_text
-from .ownership import archive_lock
+from .ownership import OwnershipError, archive_lock
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 LIMIT_NAMES = ("per_run", "per_day", "total")
 DAY_S = 24 * 3600
 MAX_BACKOFF_S = 60
 PROFILE_DEFAULTS = {"max_attempts_per_step": 2, "min_interval_s": 0.0, "request_timeout_s": 180}
+# How long a new run waits for the provider lock beyond one request timeout: a
+# stopped run's last request may still be in flight and must finish first.
+LOCK_GRACE_S = 30
 
 
 class ProviderError(Exception):
@@ -250,6 +254,7 @@ class Broker:
         self.exhausted: str | None = None
         self.terminal: str | None = None
         self._lock = threading.Lock()
+        self._stopped = False
         self._last_send = 0.0
         self._server: ThreadingHTTPServer | None = None
 
@@ -272,9 +277,14 @@ class Broker:
                     try:
                         length = int(self.headers.get("Content-Length", "0"))
                         chat = json.loads(self.rfile.read(length).decode("utf-8"))
-                        status, body = broker.complete(chat)
                     except (ValueError, UnicodeDecodeError):
                         status, body = _error(400, "laboratory_bad_request", "invalid JSON")
+                    else:
+                        try:
+                            status, body = broker.complete(chat)
+                        except Exception as error:  # noqa: BLE001 - reported, never hidden
+                            status, body = _error(500, "laboratory_broker_error",
+                                                  type(error).__name__)
                 data = json.dumps(body).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -290,13 +300,19 @@ class Broker:
         return self
 
     def stop(self) -> None:
+        # A request already in flight finishes in its own thread; it sends no
+        # further attempt and records its outcome only in the host ledger.
+        self._stopped = True
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
 
     def complete(self, chat: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """One model step: up to max_attempts_per_step reserved provider attempts."""
-        with self._lock, archive_lock(self.ledger.directory, recover_stale=True):
+        with self._lock, contextlib.ExitStack() as held:
+            if not self._exclusive(held):
+                return _error(503, "laboratory_provider_busy",
+                              "another run's provider request is still in flight")
             profile, plan = self.plan.profile, self.plan
             if self.terminal:
                 return _error(409, "laboratory_provider_stopped", self.terminal)
@@ -327,12 +343,14 @@ class Broker:
                 self._last_send = time.monotonic()
                 started = time.monotonic()
                 outcome = self._send(upstream)
+                stopped = self._stopped
                 self.ledger.append({
                     "kind": "outcome", "id": ident, "time": time.time(), "result": outcome.kind,
                     "code": outcome.code, "usage": outcome.usage,
                     "model_version": outcome.model_version, "finish_reason": outcome.finish_reason,
                     "duration_ms": int((time.monotonic() - started) * 1000),
-                }, self.mirror)
+                    **({"after_run_stop": True} if stopped else {}),
+                }, None if stopped else self.mirror)  # a stopped run's archive is sealed
                 if outcome.kind == "ok":
                     self.state.update(outcome.state)
                     return 200, {**outcome.reply, "usage": outcome.usage}
@@ -340,11 +358,25 @@ class Broker:
                 if outcome.kind == "terminal":
                     self.terminal = f"provider refused: {outcome.code}"
                     return _error(424, "laboratory_provider_terminal", self.terminal)
+                if stopped:
+                    break
                 if attempt < profile["max_attempts_per_step"]:
                     time.sleep(min(outcome.retry_after_s or 2 ** attempt, MAX_BACKOFF_S))
             return _error(424, "laboratory_provider_unavailable",
                           f"no usable provider reply after {profile['max_attempts_per_step']} "
                           f"attempts ({last})")
+
+    def _exclusive(self, held: contextlib.ExitStack) -> bool:
+        """Take the cross-process provider lock, waiting out one in-flight request."""
+        deadline = time.monotonic() + self.plan.profile["request_timeout_s"] + LOCK_GRACE_S
+        while True:
+            try:
+                held.enter_context(archive_lock(self.ledger.directory, recover_stale=True))
+                return True
+            except OwnershipError:
+                if self._stopped or time.monotonic() >= deadline:
+                    return False
+                time.sleep(0.25)
 
     def _send(self, upstream: Upstream) -> Outcome:
         # OAuth adapters supply ``secret()`` to refresh tokens; key adapters use the store.

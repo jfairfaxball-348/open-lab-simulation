@@ -325,3 +325,66 @@ def test_cli_reads_the_credential_without_echoing_it(tmp_path, monkeypatch, caps
     output = capsys.readouterr()
     assert SECRET not in output.out + output.err
     assert credentials.load("google-gemini") == SECRET
+
+
+def _broker(root, tmp_path, name, **profile):
+    archive = tmp_path / name
+    archive.mkdir()
+    loaded = {**providers.load_profile(root, PROVIDER), **profile}
+    plan = providers.Plan(PROVIDER, "fake-model-1", {}, {}, loaded, f"run-{name}", None, archive)
+    return providers.Broker(root, plan).start(), archive
+
+
+def _post(broker):
+    body = json.dumps({"messages": [], "tools": []}).encode()
+    request = urllib.request.Request(f"{broker.url}/chat/completions", data=body, method="POST",
+                                     headers={"Authorization": f"Bearer {broker.token}"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(request) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
+
+
+def test_a_new_run_waits_for_a_stopped_runs_in_flight_request(hosted, tmp_path):
+    """S014i pilot regression: a deadline stop left a request in flight, and the next
+    cell's broker was refused the provider lock and mislabelled it a bad request."""
+    root, make = hosted
+    upstream = make([("slow", 1.5, (200, TEXT)), (200, TEXT)])
+    first, first_archive = _broker(root, tmp_path, "first")
+    second, second_archive = _broker(root, tmp_path, "second")
+    try:
+        caller = threading.Thread(target=_post, args=(first,), daemon=True)
+        caller.start()
+        time.sleep(0.5)  # the first request is now in flight upstream
+        first.stop()  # the run ends at its deadline
+        status, body = _post(second)  # the next cell starts at once
+        caller.join(5)
+    finally:
+        second.stop()
+    assert status == 200 and body["choices"][0]["message"]["content"] == "done"
+    assert len(upstream.requests) == 2
+    entries = ledger(root)
+    late = next(e for e in entries if e["kind"] == "outcome" and e.get("after_run_stop"))
+    assert late["result"] == "ok"
+    # The sealed first archive keeps its reservation but receives nothing afterwards.
+    mirrored = [json.loads(line) for line in
+                (first_archive / "provider-ledger.jsonl").read_text().splitlines()]
+    assert [e["kind"] for e in mirrored] == ["reserve", "request"]
+    assert entries.index(late) < next(i for i, e in enumerate(entries)
+                                      if e["kind"] == "reserve" and e["run_id"] == "run-second")
+
+
+def test_a_held_provider_lock_is_reported_as_busy(hosted, tmp_path, monkeypatch):
+    root, make = hosted
+    upstream = make([(200, TEXT)])
+    monkeypatch.setattr(providers, "LOCK_GRACE_S", 0)
+    broker, _ = _broker(root, tmp_path, "blocked", request_timeout_s=0.5)
+    try:
+        with providers.archive_lock(providers.provider_dir(root, PROVIDER), recover_stale=True):
+            status, body = _post(broker)
+    finally:
+        broker.stop()
+    assert status == 503 and body["error"]["code"] == "laboratory_provider_busy"
+    assert upstream.requests == [] and ledger(root) == []
