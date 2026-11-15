@@ -6,7 +6,7 @@ import json
 from collections import Counter
 
 from .artifacts import read_index
-from .contracts import canonical_json
+from .contracts import canonical_json, jsonl_lines
 from .faults import OUTCOME as FAULT_OUTCOME
 from .world import file_sha256
 
@@ -215,8 +215,8 @@ def validate_annotation(annotation, events, source_sha256):
 
 
 def analyse_archive(archive):
-    events = [json.loads(line) for line in (archive / "events.jsonl").read_text(
-        encoding="utf-8").splitlines()]
+    events = [json.loads(line) for line in jsonl_lines(
+        (archive / "events.jsonl").read_text(encoding="utf-8"))]
     artifacts = list(read_index(archive))
     contents = {}
     for item in artifacts:

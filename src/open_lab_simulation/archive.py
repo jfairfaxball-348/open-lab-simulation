@@ -12,7 +12,7 @@ from pathlib import Path
 from . import policies
 from .artifacts import read_index
 from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
-from .contracts import Contracts, canonical_json, sha256_text, validate_event_stream
+from .contracts import Contracts, canonical_json, jsonl_lines, sha256_text, validate_event_stream
 from .world import file_sha256
 
 
@@ -25,7 +25,7 @@ def verify_archive(
         raw = (archive / "events.jsonl").read_bytes()
         if not raw.endswith(b"\n"):
             return ["the event log has a partial final line"]
-        lines = raw.decode("utf-8").splitlines()
+        lines = jsonl_lines(raw.decode("utf-8"))
         config = json.loads((archive / "experiment.json").read_text(encoding="utf-8"))
         world = json.loads((archive / "world-release.json").read_text(encoding="utf-8"))
         summary_path = archive / "summary.json"

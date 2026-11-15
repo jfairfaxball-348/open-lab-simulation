@@ -15,7 +15,7 @@ from open_lab_simulation import supervisor
 from open_lab_simulation.archive import verify_archive
 from open_lab_simulation.artifacts import read_index
 from open_lab_simulation.cli import main
-from open_lab_simulation.contracts import Contracts, validate_event_stream
+from open_lab_simulation.contracts import Contracts, jsonl_lines, validate_event_stream
 from open_lab_simulation.supervisor import LaunchError, run_experiment
 from open_lab_simulation.world import load_world
 
@@ -37,7 +37,7 @@ def test_scripted_run_is_fully_recorded(root, release):
     assert (result.state, result.notes) == ("completed", [])
 
     # The log is judged by the schemas the world release carries, not by ours.
-    lines = (result.archive / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    lines = jsonl_lines((result.archive / "events.jsonl").read_text(encoding="utf-8"))
     assert validate_event_stream(Contracts(release / "contracts"), lines) == []
     assert verify_archive(result.archive) == []
 

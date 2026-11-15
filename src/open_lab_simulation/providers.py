@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from . import credentials
-from .contracts import canonical_json, sha256_text
+from .contracts import canonical_json, jsonl_lines, sha256_text
 from .ownership import OwnershipError, archive_lock
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
@@ -184,7 +184,7 @@ class Ledger:
         if not self.path.exists():
             return []
         raw = self.path.read_bytes()
-        lines = raw.decode("utf-8").splitlines()
+        lines = jsonl_lines(raw.decode("utf-8"))
         if raw and not raw.endswith(b"\n"):
             # A torn final write still reserved budget; count it rather than drop it.
             lines[-1] = json.dumps({"kind": "reserve", "torn": True, "time": time.time()})

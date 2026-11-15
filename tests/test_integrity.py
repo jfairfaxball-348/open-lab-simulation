@@ -12,7 +12,12 @@ import pytest
 from conftest import FIXTURE_WORLD, REPO, call, events_of
 from open_lab_simulation.archive import verify_archive
 from open_lab_simulation.artifacts import WorkspaceScanner, read_index
-from open_lab_simulation.contracts import Contracts, canonical_json, validate_event_stream
+from open_lab_simulation.contracts import (
+    Contracts,
+    canonical_json,
+    jsonl_lines,
+    validate_event_stream,
+)
 from open_lab_simulation.paths import data_root, minimal_environment
 from open_lab_simulation.recorder import Recorder, RecordError
 from open_lab_simulation.supervisor import run_experiment
@@ -84,7 +89,7 @@ def test_recorder_writes_a_gap_free_hash_chained_log(recorder):
     for text in ("one", "two", "three"):
         output(recorder, text)
     recorder.close()
-    lines = recorder.path.read_text(encoding="utf-8").splitlines()
+    lines = jsonl_lines(recorder.path.read_text(encoding="utf-8"))
     assert validate_event_stream(CONTRACTS, lines) == []
     events = [json.loads(line) for line in lines]
     assert [e["seq"] for e in events] == [0, 1, 2]
@@ -129,7 +134,7 @@ def test_any_edit_to_the_log_is_detected(recorder, tamper):
     for text in ("one", "two", "three", "four"):
         output(recorder, text)
     recorder.close()
-    lines = recorder.path.read_text(encoding="utf-8").splitlines()
+    lines = jsonl_lines(recorder.path.read_text(encoding="utf-8"))
     assert validate_event_stream(CONTRACTS, tamper(lines)) != []
 
 
@@ -156,7 +161,7 @@ def test_archive_tampering_is_detected(archive):
 
 def test_truncated_or_edited_log_fails_archive_verification(archive):
     log = archive / "events.jsonl"
-    lines = log.read_text(encoding="utf-8").splitlines()
+    lines = jsonl_lines(log.read_text(encoding="utf-8"))
     log.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8", newline="\n")
     assert verify_archive(archive)
     log.write_text("\n".join(lines).replace("write", "wrote") + "\n", encoding="utf-8",

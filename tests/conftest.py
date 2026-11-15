@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from open_lab_simulation.contracts import jsonl_lines
 from open_lab_simulation.world import MANIFEST_NAME, compute_content_digest, file_sha256
 
 REPO = Path(__file__).resolve().parent.parent
@@ -175,7 +176,7 @@ def make_config(tmp_path):
 
 def events_of(archive: Path) -> list[dict]:
     return [json.loads(line) for line in
-            (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8"))]
 
 
 def tree(directory: Path) -> set[str]:

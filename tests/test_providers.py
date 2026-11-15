@@ -22,7 +22,7 @@ import pytest
 from conftest import FIXTURE_WORLD, add_test_capabilities, events_of
 from open_lab_simulation import cli, credentials, providers
 from open_lab_simulation.archive import verify_archive
-from open_lab_simulation.contracts import canonical_json, sha256_text
+from open_lab_simulation.contracts import canonical_json, jsonl_lines, sha256_text
 from open_lab_simulation.supervisor import LaunchError, run_experiment
 
 SECRET = "TEST-provider-credential-0123456789abcdef"
@@ -196,7 +196,7 @@ def test_hosted_run_goes_through_the_broker_and_never_exposes_the_credential(
     assert model["hosted"]["adapter"] == {"id": "fake-chat", "version": "1.0.0",
                                           "host": "127.0.0.1"}
     assert model["identity"]["digest"] is None
-    mirrored = (result.archive / "provider-ledger.jsonl").read_text().splitlines()
+    mirrored = jsonl_lines((result.archive / "provider-ledger.jsonl").read_text(encoding="utf-8"))
     assert sum('"kind":"request"' in line for line in mirrored) == 3
     assert verify_archive(result.archive) == []
 
@@ -370,7 +370,7 @@ def test_a_new_run_waits_for_a_stopped_runs_in_flight_request(hosted, tmp_path):
     assert late["result"] == "ok"
     # The sealed first archive keeps its reservation but receives nothing afterwards.
     mirrored = [json.loads(line) for line in
-                (first_archive / "provider-ledger.jsonl").read_text().splitlines()]
+                jsonl_lines((first_archive / "provider-ledger.jsonl").read_text(encoding="utf-8"))]
     assert [e["kind"] for e in mirrored] == ["reserve", "request"]
     assert entries.index(late) < next(i for i, e in enumerate(entries)
                                       if e["kind"] == "reserve" and e["run_id"] == "run-second")

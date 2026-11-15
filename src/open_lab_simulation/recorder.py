@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .contracts import Contracts, canonical_json, sha256_text, validate_event_stream
+from .contracts import Contracts, canonical_json, jsonl_lines, sha256_text, validate_event_stream
 
 
 class RecordError(Exception):
@@ -53,7 +53,7 @@ class Recorder:
             raw = path.read_bytes()
             if not raw.endswith(b"\n"):
                 raise RecordError("refusing to append to a partial event log")
-            lines = raw.decode("utf-8").splitlines()
+            lines = jsonl_lines(raw.decode("utf-8"))
             if validate_event_stream(contracts, lines):
                 raise RecordError("refusing to append to an invalid event log")
             for line in lines:

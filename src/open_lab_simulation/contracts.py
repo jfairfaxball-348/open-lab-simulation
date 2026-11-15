@@ -24,6 +24,20 @@ def canonical_json(document: Any) -> str:
     return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def jsonl_lines(text: str) -> list[str]:
+    """Lines of recorded JSONL, split on "\\n" only.
+
+    ``canonical_json`` writes U+0085, U+2028 and U+2029 raw, and
+    ``str.splitlines()`` breaks on them, cutting an intact record in two (KI-24).
+    A final line without "\\n" is returned as it is; callers decide whether a
+    torn line is an error.
+    """
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return lines
+
+
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 

@@ -44,6 +44,7 @@ from .checkpoints import (
     run_lock,
     write_checkpoint,
 )
+from .contracts import jsonl_lines
 from .model import SCRIPTED_MODEL_ID
 from .paths import data_root, minimal_environment
 from .proctree import ProcessTree
@@ -404,7 +405,7 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     raw, config, world, model, isolation = _prepare(archive / "experiment.json", root)
     settings = recovery.policy(config)
     events = [json.loads(line) for line in
-              (archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+              jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8"))]
     if interrupted:
         if not settings or not settings["auto_resume"]:
             raise LaunchError("interrupted run did not opt into startup recovery")
@@ -542,7 +543,7 @@ def _continue_recovery(result, root, config, pause_after_steps):
         )
     ):
         events = [json.loads(line) for line in
-                  (result.archive / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+                  jsonl_lines((result.archive / "events.jsonl").read_text(encoding="utf-8"))]
         if recovery.restarts_used(events) >= settings["max_restarts"]:
             _recovery_action(result.archive, "recovery_exhausted",
                              "recovery retry budget exhausted")
@@ -595,7 +596,8 @@ def _interrupted_refusal(archive, detail):
         return
     from .contracts import Contracts
 
-    events = [json.loads(line) for line in (archive / "events.jsonl").read_text().splitlines()]
+    events = [json.loads(line) for line in
+              jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8"))]
     recorder = Recorder(archive / "events.jsonl", Contracts(archive / "contracts"),
                         events[0]["experiment_id"], archive.name, append=True,
                         elapsed_s=events[-1].get("monotonic_ms", 0) / 1000)
@@ -833,7 +835,7 @@ def _run_prepared(
             benchmark_fault=faults.enabled(config),
             fault_used=bool(resume and any(
                 json.loads(line)["payload"].get("extensions", {}).get("stage") == "benchmark_fault"
-                for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines())),
+                for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))),
         )
         if final == "terminated":
             change("stopping", reason)

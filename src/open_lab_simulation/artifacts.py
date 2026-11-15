@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .contracts import Contracts, canonical_json
+from .contracts import Contracts, canonical_json, jsonl_lines
 from .paths import walk_files
 from .recorder import Recorder
 
@@ -59,7 +59,7 @@ class WorkspaceScanner:
                 max((int(m["artifact_id"].split("-")[-1]) for m in metadata), default=0) + 1
             )
             records = {m["artifact_id"]: m for m in metadata}
-            for line in (archive / "events.jsonl").read_text(encoding="utf-8").splitlines():
+            for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")):
                 event = json.loads(line)
                 payload = event["payload"]
                 if event["type"] in ("artifact.created", "artifact.modified"):
@@ -183,4 +183,4 @@ def read_index(archive: Path) -> list[dict[str, Any]]:
     index = archive / "artifacts" / "index.jsonl"
     if not index.is_file():
         return []
-    return [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines() if line]
+    return [json.loads(line) for line in jsonl_lines(index.read_text(encoding="utf-8")) if line]

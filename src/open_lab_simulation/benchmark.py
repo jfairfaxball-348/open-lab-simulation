@@ -14,7 +14,7 @@ from pathlib import Path
 from . import benchmark_analysis as analysis
 from . import faults, ollama, policies
 from .archive import verify_archive
-from .contracts import canonical_json
+from .contracts import canonical_json, jsonl_lines
 from .ownership import archive_lock
 from .paths import data_root
 from .recorder import utc_now
@@ -115,7 +115,7 @@ def read_ledger(path):
     if not raw.endswith(b"\n"):
         raise ValueError("campaign ledger has an incomplete final line; retain for investigation")
     entries, previous = [], None
-    for index, line in enumerate(raw.decode("utf-8").splitlines()):
+    for index, line in enumerate(jsonl_lines(raw.decode("utf-8"))):
         entry = json.loads(line)
         if (entry.get("seq") != index or entry.get("previous") != previous
                 or canonical_json(entry) != line):
