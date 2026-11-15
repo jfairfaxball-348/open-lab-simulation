@@ -11,6 +11,17 @@ never code.
 
 ## Status
 
+S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
+`stats.describe` and `stats.regress`. Discovery, demonstration, invocation,
+invalid-input/degenerate cases and deny lists are tested through the supervisor;
+the statistics capabilities need no filesystem/network permission. A separate
+`experiments/s008c-scripted.json` archive verifies without any real model call.
+The four-cell hosted check is prepared in `campaigns/s008c-001.json` and
+`scripts/s008c_check.py`; its first launch requires a recorded owner confirmation
+of quota availability (`--quota-clearance`). No S008c hosted request has been
+made, and the milestone remains incomplete. Earlier 0.6.0/0.7.0 fixtures remain
+unchanged. Runtime, provider, context, continuation and repair code are unchanged.
+
 S007e adds supervisor-mediated `models.ask` in minimal world 0.7.0. A hosted
 orchestrator can consult the approved installed local llama3.2:3b through one
 bounded lease. The runtime receives text, never a model-server address. The

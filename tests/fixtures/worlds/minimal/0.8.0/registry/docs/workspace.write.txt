@@ -1,0 +1,169 @@
+# Write workspace text (workspace.write)
+
+## categories
+
+[
+  "workspace",
+  "files"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "bytes_written": 18,
+      "path": "notes/hello.txt"
+    },
+    "id": "basic",
+    "input": {
+      "path": "notes/hello.txt",
+      "text": "Hello laboratory!\n"
+    },
+    "title": "Basic invocation in an empty workspace"
+  }
+]
+
+## description
+
+Creates parent directories and a new UTF-8 file. Existing files are refused unless overwrite is true. Returns the relative path and byte count. Does not execute the text.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid arguments or unavailable resource.",
+    "recovery": "Check the schema, permissions and relative path.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+workspace.write
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "overwrite": {
+      "default": false,
+      "type": "boolean"
+    },
+    "path": {
+      "maxLength": 240,
+      "minLength": 1,
+      "type": "string"
+    },
+    "text": {
+      "maxLength": 250000,
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "text"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "write",
+  "save",
+  "file",
+  "text",
+  "create",
+  "notes"
+]
+
+## limitations
+
+[
+  "No network access or code execution.",
+  "Forward-slash relative paths only; traversal, absolute paths, links and Windows special names are refused.",
+  "Process-tier path checks are not an OS sandbox; concurrent path replacement is not contained.",
+  "At most 250000 Unicode characters per call. Writes are not atomic; interrupted writes may be partial."
+]
+
+## name
+
+Write workspace text
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "bytes_written": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "path": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "bytes_written"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_write",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 16,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "basic"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Write UTF-8 text to a relative workspace file.
+
+## version
+
+0.1.0

@@ -1,0 +1,143 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s008c-scripted-001",
+  "title": "S008c statistics engineering acceptance",
+  "created_at": "2026-11-15T00:00:00Z",
+  "initial_prompt": "Scripted statistics engineering acceptance; no real model.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.8.0",
+    "content_digest": "8d0f5747888110a85456064b9900fa782e94e566f2e4811aa3b3ac07eee69110"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 60,
+    "max_steps": 32
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none"
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "statistics data"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "stats.describe"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.demonstrate",
+              "arguments": {
+                "id": "stats.describe"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "stats.describe",
+                "arguments": {
+                  "values": [
+                    2,
+                    4,
+                    6
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "stats.regress"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.demonstrate",
+              "arguments": {
+                "id": "stats.regress"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "stats.regress",
+                "arguments": {
+                  "x": [
+                    1,
+                    2,
+                    3
+                  ],
+                  "y": [
+                    3,
+                    5,
+                    7
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "stats.regress",
+                "arguments": {
+                  "x": [
+                    1,
+                    1
+                  ],
+                  "y": [
+                    1,
+                    2
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
