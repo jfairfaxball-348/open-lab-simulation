@@ -347,10 +347,16 @@ class Broker:
                           f"attempts ({last})")
 
     def _send(self, upstream: Upstream) -> Outcome:
+        # OAuth adapters supply ``secret()`` to refresh tokens; key adapters use the store.
+        load_secret = getattr(self.adapter, "secret", None) or (
+            lambda: credentials.load(self.plan.provider_id))
         try:
-            secret = credentials.load(self.plan.provider_id)
+            secret = load_secret()
         except credentials.CredentialError as error:
             return Outcome("terminal", f"credential_unavailable: {error}")
+        except OSError as error:
+            # A refresh that could not reach the issuer is temporary; tokens are kept.
+            return Outcome("retry", f"credential_refresh_{type(error).__name__}")
         request = urllib.request.Request(
             upstream.url, data=json.dumps(upstream.body).encode("utf-8"), method="POST",
             headers={"Content-Type": "application/json", **upstream.headers,
@@ -368,10 +374,14 @@ class Broker:
         except (OSError, TimeoutError) as error:
             # Sent or not, the reservation stands: the outcome is unknown.
             return Outcome("retry", f"transport_{type(error).__name__}")
-        try:
-            payload = json.loads(raw.decode("utf-8")) if raw else None
-        except (UnicodeDecodeError, ValueError):
-            payload = None
+        decode = getattr(self.adapter, "decode", None)
+        if decode is not None:  # e.g. a server-sent event stream
+            payload = decode(status, raw, headers)
+        else:
+            try:
+                payload = json.loads(raw.decode("utf-8")) if raw else None
+            except (UnicodeDecodeError, ValueError):
+                payload = None
         return self.adapter.response(status, payload, headers, self.state)
 
 

@@ -239,7 +239,21 @@ examples are retained; they do not open expansion. See Builder
 `docs/experiments/2026-11-14-autonomy-baseline.md` and
 `docs/experiments/results/S007d-001.json`.
 
-**Hosted provider broker (S014b) is implemented; no hosted adapter is yet.**
+**ChatGPT plan-usage adapter (S014d) is implemented and tested against fakes
+only.** `ols provider sign-in openai-chatgpt` runs OpenAI's documented Sign in
+with ChatGPT flow in the owner's own browser (dynamic registration, PKCE,
+loopback callback on 127.0.0.1, RS256 ID-token check, plan-usage scope check)
+and stores the tokens with DPAPI; `sign-out` revokes the refresh token and
+clears them while keeping the registration and host id; `models` lists the
+account's models. The adapter (`openai-responses-chatgpt-plan` 1.0.0) sends
+stateless Responses requests (`store: false`, `stream: true`, tools in one
+namespace, `strict: false`), refreshes tokens near expiry, never sends
+temperature, top-p, output cap or seed (recorded as differences), and never
+resends or records reasoning items. No live request has been made by this code
+yet.
+
+**Hosted provider broker (S014b) is implemented.** Adapters exist for Google
+Gemini (S014c) and ChatGPT plan usage (S014d).
 A world or catalog model whose provider has `locality: external` is reached only
 through a loopback broker inside the supervisor (ADR-0016): the runtime sends its
 usual chat-completions requests with a per-run token, and the broker alone reads
@@ -250,7 +264,8 @@ mirrors each request into the run's `provider-ledger.jsonl`. Launch is refused
 unless the provider is implemented, enabled, budgeted and credentialed; hosted
 runs refuse automatic recovery; nothing falls back to another model. Owner
 administration: `ols provider status|set-key|clear-key|configure <id>` (the key
-is typed at a hidden prompt, never passed as an argument).
+is typed at a hidden prompt, never passed as an argument), plus
+`sign-in|sign-out|models openai-chatgpt`.
 
 **S007h-001 is complete: NO_GO.** The same frozen design with one change, the
 installed `qwen3:4b` as orchestrator (`campaigns/s007h-001.json`; runtime source

@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import __version__, credentials, gemini, ollama, providers  # noqa: F401
+from . import __version__, chatgpt, chatgpt_auth, credentials, gemini, ollama, providers  # noqa: F401
 from .archive import verify_archive
 from .paths import data_root
 from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
@@ -92,6 +92,8 @@ def _cmd_provider(args: argparse.Namespace) -> int:
             secret = getpass.getpass(f"Credential for {args.provider} (input is hidden): ").strip()
             credentials.store(args.provider, secret)
             print(f"Stored an encrypted credential for {args.provider} ({len(secret)} characters).")
+        elif args.action in ("sign-in", "sign-out", "models"):
+            return _chatgpt_action(args)
         elif args.action == "clear-key":
             removed = credentials.delete(args.provider)
             print("Credential deleted." if removed else "No credential was stored.")
@@ -116,6 +118,47 @@ def _cmd_provider(args: argparse.Namespace) -> int:
                                                         "total": used["total"]}}, indent=2))
     except (credentials.CredentialError, providers.ProviderError) as error:
         print(f"Provider command refused: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def _chatgpt_action(args: argparse.Namespace) -> int:
+    """Sign in with ChatGPT: the owner signs in in their own browser; tokens never print."""
+    if args.provider != chatgpt_auth.PROVIDER_ID:
+        print(f"Provider command refused: {args.action} applies only to "
+              f"{chatgpt_auth.PROVIDER_ID}", file=sys.stderr)
+        return 2
+    try:
+        if args.action == "sign-in":
+            import webbrowser
+
+            def show(url: str) -> None:
+                print("Continue with ChatGPT: a browser window is opening. If it does not, "
+                      "open the sign-in page printed below.", flush=True)
+                if not webbrowser.open(url):
+                    print(url, flush=True)
+
+            result = chatgpt_auth.sign_in(show)
+            print(json.dumps(result, indent=2))
+            if not result["plan_usage_granted"]:
+                print("ChatGPT plan usage was not granted; the provider stays unusable.",
+                      file=sys.stderr)
+                return 2
+            print("Set this app's usage limit at https://chatgpt.com/settings/usage")
+        elif args.action == "sign-out":
+            result = chatgpt_auth.sign_out()
+            print(json.dumps(result, indent=2))
+            if result["revoked"] is False:
+                print("Remote revocation was not confirmed; disconnect the app in ChatGPT "
+                      "settings.", file=sys.stderr)
+        else:
+            for model in chatgpt_auth.list_models(chatgpt_auth.access_token()):
+                print(json.dumps(model))
+    except chatgpt_auth.SignInError as error:
+        print(f"Sign-in refused: {error}", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"Provider command failed: {type(error).__name__}", file=sys.stderr)
         return 2
     return 0
 
@@ -159,7 +202,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     provider = commands.add_parser(
         "provider", help="Owner administration of hosted providers (disabled by default).")
-    provider.add_argument("action", choices=("status", "set-key", "clear-key", "configure"))
+    provider.add_argument("action", choices=("status", "set-key", "clear-key", "configure",
+                                                   "sign-in", "sign-out", "models"))
     provider.add_argument("provider", nargs="?", help="Provider id, e.g. google-gemini.")
     provider.add_argument("--data-root")
     toggle = provider.add_mutually_exclusive_group()

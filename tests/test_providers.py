@@ -57,9 +57,11 @@ class Upstream:
                     self.connection.close()
                     return
                 status, payload = step
-                data = json.dumps(payload).encode()
+                streamed = isinstance(payload, bytes)  # a server-sent event stream
+                data = payload if streamed else json.dumps(payload).encode()
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type",
+                                 "text/event-stream" if streamed else "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

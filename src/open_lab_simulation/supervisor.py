@@ -23,6 +23,7 @@ from typing import Any
 
 from . import (
     __version__,
+    chatgpt,  # noqa: F401 - registers the ChatGPT plan-usage adapter
     container,
     faults,
     gateway,
