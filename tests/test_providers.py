@@ -388,3 +388,21 @@ def test_a_held_provider_lock_is_reported_as_busy(hosted, tmp_path, monkeypatch)
         broker.stop()
     assert status == 503 and body["error"]["code"] == "laboratory_provider_busy"
     assert upstream.requests == [] and ledger(root) == []
+
+
+def test_min_interval_spaces_every_send_including_retries(hosted, tmp_path):
+    """S011p pacing: the broker's min_interval_s is the registered request cadence.
+    Every reserved attempt, retries included, starts at least that long after the last."""
+    root, make = hosted
+    make([(503, {}), (200, TEXT), (200, TEXT)])
+    broker, _ = _broker(root, tmp_path, "paced", min_interval_s=0.6, max_attempts_per_step=2)
+    try:
+        assert _post(broker)[0] == 200  # one 503 retry, then ok
+        assert _post(broker)[0] == 200
+    finally:
+        broker.stop()
+    sends = [e["time"] for e in ledger(root) if e["kind"] == "reserve"]
+    assert len(sends) == 3
+    # Pacing uses the monotonic clock; ledger times are wall-clock stamps whose Windows
+    # resolution is coarse, hence the small tolerance.
+    assert all(later - earlier >= 0.55 for earlier, later in zip(sends, sends[1:], strict=False))

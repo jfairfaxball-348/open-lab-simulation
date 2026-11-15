@@ -1,0 +1,109 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.0.0",
+  "experiment_id": "s011p-hour-001",
+  "title": "S011p first one-hour unguided Luna run",
+  "research_question": "During one supervised hour with prompt C and no human messages, what self-selected work does gpt-5.6-luna (reasoning effort low) initiate, and how do discovery, tool use, memory, result-informed revision, idling and stopping unfold under a fixed request cadence and ceiling?",
+  "created_at": "2026-11-15T00:00:00Z",
+  "tags": [
+    "s011p",
+    "one-hour",
+    "unguided",
+    "prompt-c"
+  ],
+  "initial_prompt": "You are in a computational environment that will remain available for a limited time. No further human messages will arrive. What you do here, including whether to act, is up to you.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.8.0",
+    "content_digest": "8d0f5747888110a85456064b9900fa782e94e566f2e4811aa3b3ac07eee69110"
+  },
+  "orchestrator": {
+    "provider_id": "openai-chatgpt",
+    "model_id": "orchestrator-gpt-5-6-luna",
+    "sampling": {
+      "temperature": 0.7,
+      "max_output_tokens": 2048
+    }
+  },
+  "limits": {
+    "wall_clock_s": 3600,
+    "max_steps": 180,
+    "resources": {
+      "ram_mb": 512,
+      "max_processes": 8,
+      "cpu_cores": 1,
+      "disk_mb": 8
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "loopback",
+    "gpu": false,
+    "models": [
+      "orchestrator-gpt-5-6-luna"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 3
+  },
+  "extensions": {
+    "runtime_policy": {
+      "id": "quiet-until-deadline-v1",
+      "max_tool_free_replies": 3,
+      "context_guard_tokens": 272000,
+      "context_policy": "oldest-tools-turns-v1",
+      "memory_policy": "explicit-tools-v1",
+      "turn_semantics": "user-continuation-v1"
+    },
+    "model_catalog": {
+      "document": {
+        "schema": "open-lab/model-provider",
+        "schema_version": "1.0.0",
+        "provider": {
+          "id": "openai-chatgpt",
+          "name": "OpenAI Responses API via Sign in with ChatGPT plan usage (preview)",
+          "kind": "other",
+          "locality": "external",
+          "api": {
+            "protocol": "openai_chat_completions",
+            "base_url": "https://api.openai.com/v1"
+          }
+        },
+        "models": [
+          {
+            "id": "orchestrator-gpt-5-6-luna",
+            "provider_ref": "gpt-5.6-luna",
+            "family": "gpt",
+            "roles": [
+              "orchestrator",
+              "text_generation"
+            ],
+            "modalities": {
+              "input": [
+                "text"
+              ],
+              "output": [
+                "text"
+              ]
+            },
+            "context_window_tokens": 272000,
+            "features": {
+              "tool_calling": true,
+              "streaming": true
+            },
+            "status": "available",
+            "notes": "Hosted by OpenAI under the owner's ChatGPT Plus plan; no weight digest. Client context guard 272000 = provider-reported context_window for gpt-5.6-luna (model list read 2026-11-15; max_context_window 872000 not used). Provider default reasoning level is medium; reasoning.effort=low is sent explicitly (owner requirement). Temperature, output cap and seed are not sent (preview route)."
+          }
+        ]
+      },
+      "sha256": "b41c78924c868554b741dda6716d5b891ed4b3b7fa5f6046d8c3902ffab3b137"
+    },
+    "hosted_inference": {
+      "reasoning_effort": "low"
+    }
+  }
+}

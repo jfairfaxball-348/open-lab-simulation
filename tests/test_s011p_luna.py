@@ -106,3 +106,59 @@ def test_the_smoke_cannot_exceed_its_request_ceiling(luna_run):
     assert len(upstream.requests) == 3
     messages = [e["payload"]["message"] for e in events_of(result.archive) if e["type"] == "error"]
     assert any("laboratory_budget_exhausted" in m for m in messages)
+
+
+HOUR = REPO / "experiments" / "s011p" / "hour-001.json"
+
+
+def test_hour_config_differs_from_the_smoke_only_where_registered():
+    hour, smoke = json.loads(HOUR.read_text(encoding="utf-8")), smoke_config()
+    prompt_c = json.loads((REPO / "experiments/s008c-001/c1.json").read_text(
+        encoding="utf-8"))["initial_prompt"]
+    assert hour["initial_prompt"] == prompt_c  # byte-for-byte prompt C
+    assert hour["limits"]["wall_clock_s"] == 3600 and hour["limits"]["max_steps"] == 180
+    policy = hour["extensions"]["runtime_policy"]
+    assert policy["id"] == "quiet-until-deadline-v1" and policy["max_tool_free_replies"] == 3
+    assert hour["extensions"]["hosted_inference"] == {"reasoning_effort": "low"}
+    assert hour["world"] == smoke["world"] and hour["orchestrator"] == smoke["orchestrator"]
+    assert hour["permissions"] == smoke["permissions"]
+    assert hour["extensions"]["model_catalog"] == smoke["extensions"]["model_catalog"]
+    assert hour["termination"] == {"on_deadline": "hard_stop"}
+
+
+def test_hour_config_idles_after_three_tool_free_replies_with_low_effort(
+        tmp_path, monkeypatch):
+    """The registered quiet treatment: two recorded continuations, then no model call."""
+    monkeypatch.setattr(credentials, "credentials_dir", lambda: tmp_path / "credentials")
+    root = tmp_path / "data"
+    shutil.copytree(WORLD, root / "worlds/minimal/0.8.0")
+    upstream = Upstream([SEARCH, ANSWER, ANSWER, ANSWER, ANSWER])
+    try:
+        monkeypatch.setattr(chatgpt, "ENDPOINT", upstream.url)
+        adapter = chatgpt.ChatGPTAdapter()
+        adapter.host = "127.0.0.1"
+        monkeypatch.setitem(providers.ADAPTERS, PROVIDER, adapter)
+        credentials.store(PROVIDER, json.dumps({
+            "client_id": "oaiapp_s011p", "access_token": ACCESS, "refresh_token": "TEST-r",
+            "id_token": None, "scopes": sorted(chatgpt_auth.SCOPES.split()),
+            "expires_at": time.time() + 3600}, separators=(",", ":")))
+        providers.write_profile(root, PROVIDER, enabled=True, per_run=180, per_day=180,
+                                total=180, max_attempts_per_step=2, min_interval_s=0.2)
+        config = json.loads(HOUR.read_text(encoding="utf-8"))
+        config["limits"]["wall_clock_s"] = 15  # only the deadline is shortened
+        path = tmp_path / "hour.json"
+        path.write_text(json.dumps(config), encoding="utf-8")
+        result = run_experiment(path, root)
+    finally:
+        upstream.close()
+    bodies = [r["body"] for r in upstream.requests]
+    assert len(bodies) == 4  # search, then three tool-free replies; the fifth is never asked
+    assert all(b["reasoning"] == {"effort": "low"} for b in bodies)
+    events = events_of(result.archive)
+    continuations = [e for e in events if e["type"] == "environment.message"
+                     and e["payload"]["kind"] == "continuation"]
+    assert len(continuations) == 2
+    stages = [e["payload"].get("extensions", {}).get("stage") for e in events
+              if e["type"] == "supervisor.action"]
+    assert "runtime_idle" in stages
+    assert verify_archive(result.archive) == []
