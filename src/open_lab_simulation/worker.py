@@ -265,6 +265,7 @@ def main() -> int:
             chosen.get("sampling"),
             chosen["runtime_policy"]["context_guard_tokens"],
             record_input=channel.model_input,
+            auth_token=chosen.get("auth_token"),
         )
     actor = spec["actor"]
     isolation = spec.get("isolation", {"tier": "process"})

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 from pathlib import Path
 
-from . import __version__, ollama
+from . import __version__, credentials, ollama, providers
 from .archive import verify_archive
 from .paths import data_root
 from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
@@ -80,6 +81,45 @@ def _cmd_measure(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_provider(args: argparse.Namespace) -> int:
+    """Owner-only provider administration. Credentials are typed, never passed as arguments."""
+    root = Path(args.data_root) if args.data_root else data_root()
+    if args.action != "status" and not args.provider:
+        print("Provider command refused: name the provider", file=sys.stderr)
+        return 2
+    try:
+        if args.action == "set-key":
+            secret = getpass.getpass(f"Credential for {args.provider} (input is hidden): ").strip()
+            credentials.store(args.provider, secret)
+            print(f"Stored an encrypted credential for {args.provider} ({len(secret)} characters).")
+        elif args.action == "clear-key":
+            removed = credentials.delete(args.provider)
+            print("Credential deleted." if removed else "No credential was stored.")
+        elif args.action == "configure":
+            enabled = True if args.enable else False if args.disable else None
+            profile = providers.write_profile(
+                root, args.provider, enabled=enabled, per_run=args.per_run,
+                per_day=args.per_day, total=args.total, min_interval_s=args.min_interval,
+                max_attempts_per_step=args.attempts, request_timeout_s=args.timeout)
+            print(json.dumps(profile, indent=2))
+        else:
+            ids = [args.provider] if args.provider else sorted(providers.ADAPTERS)
+            for ident in ids:
+                try:
+                    profile = providers.load_profile(root, ident)
+                except providers.ProviderError as error:
+                    profile = {"note": str(error)}
+                used = providers.Ledger(root, ident).usage("", None)
+                print(json.dumps({"provider": ident, "credential_stored": credentials.exists(ident),
+                                  "profile": profile,
+                                  "requests_reserved": {"last_24h": used["per_day"],
+                                                        "total": used["total"]}}, indent=2))
+    except (credentials.CredentialError, providers.ProviderError) as error:
+        print(f"Provider command refused: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ols", description="Open Laboratory Simulation.")
     parser.add_argument("--version", action="version", version=f"ols {__version__}")
@@ -116,6 +156,20 @@ def build_parser() -> argparse.ArgumentParser:
     measure.add_argument("base_url", help="The provider's base URL, e.g. http://127.0.0.1:11434/v1")
     measure.add_argument("provider_ref", help="The server's name for the model, e.g. llama3.2:3b")
     measure.set_defaults(func=_cmd_measure)
+
+    provider = commands.add_parser(
+        "provider", help="Owner administration of hosted providers (disabled by default).")
+    provider.add_argument("action", choices=("status", "set-key", "clear-key", "configure"))
+    provider.add_argument("provider", nargs="?", help="Provider id, e.g. google-gemini.")
+    provider.add_argument("--data-root")
+    toggle = provider.add_mutually_exclusive_group()
+    toggle.add_argument("--enable", action="store_true")
+    toggle.add_argument("--disable", action="store_true")
+    for flag in ("--per-run", "--per-day", "--total", "--attempts"):
+        provider.add_argument(flag, type=int, help="Approved request ceiling or attempts.")
+    provider.add_argument("--min-interval", type=float, help="Seconds between requests.")
+    provider.add_argument("--timeout", type=float, help="Seconds per provider request.")
+    provider.set_defaults(func=_cmd_provider)
     return parser
 
 

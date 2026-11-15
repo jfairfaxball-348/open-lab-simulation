@@ -21,7 +21,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, container, faults, gateway, ollama, policies, recovery, resources
+from . import (
+    __version__,
+    container,
+    faults,
+    gateway,
+    ollama,
+    policies,
+    providers,
+    recovery,
+    resources,
+)
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
 from .checkpoints import (
@@ -148,7 +158,7 @@ def continuation_message(config: dict[str, Any], world: World) -> str | None:
     return message if isinstance(message, str) and message else None
 
 
-def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
+def _resolve_model(config: dict[str, Any], world: World, root: Path) -> dict[str, Any]:
     """Decide exactly which model drives the run, or refuse.
 
     The experiment names a gateway model id; the world's model-provider
@@ -193,6 +203,8 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
             f"the experiment must grant network 'loopback' and list '{model_id}' in "
             "permissions.models"
         )
+    if provider["locality"] == "external":
+        return _resolve_hosted(config, root, provider_id, provider, model, selected_catalog)
     try:
         settings = recovery.policy(config)
         identity = gateway.identify(
@@ -219,6 +231,64 @@ def _resolve_model(config: dict[str, Any], world: World) -> dict[str, Any]:
         ))
     except ValueError as error:
         raise LaunchError(str(error)) from None
+    if "context_window_tokens" in model:
+        resolved["context_tokens"] = model["context_window_tokens"]
+    return resolved
+
+
+def _resolve_hosted(config, root, provider_id, provider, model, selected_catalog):
+    """A hosted model, reached only through the supervisor's provider broker (ADR-0016)."""
+    if recovery.policy(config):
+        raise LaunchError("automatic recovery is not supported for hosted providers")
+    extensions = config.get("extensions", {})
+    campaign = extensions.get("benchmark", {}).get("campaign_id")
+    inference = extensions.get("hosted_inference", {})
+    sampling = config["orchestrator"].get("sampling", {})
+    try:
+        checked = providers.launch_check(root, provider_id, campaign=campaign)
+        adapter = checked["adapter"]
+        support = adapter.settings_support(sampling, inference)
+    except (providers.ProviderError, ValueError) as error:
+        raise LaunchError(str(error)) from None
+    if model["status"] != "available":
+        raise LaunchError("the model must be approved as available")
+    profile = checked["profile"]
+    resolved = {
+        "kind": "openai_chat",
+        "model_id": model["id"],
+        "provider_id": provider_id,
+        "real_model": True,
+        "base_url": None,
+        "provider_ref": model["provider_ref"],
+        "sampling": sampling,
+        "identity": {"provider_ref": model["provider_ref"], "digest": None,
+                     "identity_limit": "hosted model: no weight digest; per-call model "
+                                       "versions are in provider-ledger.jsonl"},
+        "provider_kind": provider["kind"],
+        "catalog": selected_catalog,
+        "model_manifest": model,
+        "provider_manifest": provider,
+        "hosted": {
+            "adapter": {"id": adapter.id, "version": adapter.version, "host": adapter.host},
+            "inference": inference,
+            "campaign": campaign,
+            "limits": profile["limits"],
+            "max_attempts_per_step": profile["max_attempts_per_step"],
+            "min_interval_s": profile["min_interval_s"],
+            "request_timeout_s": profile["request_timeout_s"],
+        },
+        "settings": {
+            "context_guard_tokens": model.get("context_window_tokens"),
+            "effective_context_tokens": None,
+            "context_limit": "client guard only; provider context is not set or attested",
+            "sampling_requested": sampling,
+            "sampling_effective": support,
+            "output_tokens_requested": sampling.get("max_output_tokens"),
+            "offload": None,
+            "repair_policy": "syntactic-tool-repair-v1",
+            "request_attempts_max": profile["max_attempts_per_step"],
+        },
+    }
     if "context_window_tokens" in model:
         resolved["context_tokens"] = model["context_window_tokens"]
     return resolved
@@ -264,7 +334,7 @@ def _prepare(
     except RegistryError as error:
         raise LaunchError(str(error)) from None
     isolation = _isolation(config, world)
-    model = _resolve_model(config, world)
+    model = _resolve_model(config, world, root)
     try:
         model["runtime_policy"] = policies.resolve(
             config, continuation_message(config, world), model.get("context_tokens"),
@@ -660,7 +730,20 @@ def _run_prepared(
     final, reason = "failed", "supervisor error"
     accounting = None
     controller = None
+    broker = None
     try:
+        worker_model = model
+        if model.get("hosted"):
+            # Archives always live at <root>/runs/<experiment>/<run>.
+            broker = providers.Broker(archive.parent.parent.parent, providers.Plan(
+                provider_id=model["provider_id"], model_ref=model["provider_ref"],
+                sampling=model["sampling"], inference=model["hosted"]["inference"],
+                profile={"limits": model["hosted"]["limits"],
+                         **{k: model["hosted"][k] for k in providers.PROFILE_DEFAULTS}},
+                run_id=run_id, campaign=model["hosted"]["campaign"], archive=archive,
+            )).start()
+            # The run token reaches only the runtime's stdin, never model.json or events.
+            worker_model = {**model, "base_url": broker.url, "auth_token": broker.token}
         controller = resources.Controller(config, workspace, world, recorder)
         if recovery.policy(config):
             accounting = recovery.Accounting(archive, elapsed_offset)
@@ -690,7 +773,7 @@ def _run_prepared(
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
             "deny": capabilities.get("deny"),
-            "model": model,
+            "model": worker_model,
             "actor": agent,
             "isolation": (
                 {"tier": "container", "run_id": run_id, "distro": isolation["distro"],
@@ -772,6 +855,17 @@ def _run_prepared(
     finally:
         if tree is not None:
             tree.kill()
+        if broker is not None:
+            broker.stop()
+            if broker.exhausted:
+                recorder.record(
+                    recorder="supervisor", type="supervisor.action", actor=supervisor,
+                    payload={"action": "limit_enforced",
+                             "detail": f"approved provider budget '{broker.exhausted}' exhausted; "
+                                       "no further provider request was sent",
+                             "extensions": {"stage": "provider_budget",
+                                            "limit": f"provider_{broker.exhausted}"}},
+                )
         if contained:
             # Containers outlive the runtime's process tree; nothing of the run may.
             try:

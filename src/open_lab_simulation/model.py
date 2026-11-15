@@ -298,6 +298,7 @@ class OpenAIChatModel:
         sampling: dict[str, Any] | None = None,
         context_tokens: int | None = None,
         record_input=None,
+        auth_token: str | None = None,
     ):
         if not is_loopback(base_url):
             raise ModelError("only a model server on this machine may be used")
@@ -305,6 +306,10 @@ class OpenAIChatModel:
         self.records_inputs = True
         self._record_input = record_input
         self._url = base_url.rstrip("/") + "/chat/completions"
+        # A hosted provider broker's per-run token; never a provider credential.
+        self._headers = {"Content-Type": "application/json"}
+        if auth_token:
+            self._headers["Authorization"] = f"Bearer {auth_token}"
         self._provider_ref = provider_ref
         self._tools, self._names = tool_definitions(manifests)
         self._sampling = sampling or {}
@@ -316,7 +321,7 @@ class OpenAIChatModel:
     def _post(self, body: dict[str, Any]) -> dict[str, Any]:
         request = urllib.request.Request(
             self._url, data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"}, method="POST",
+            headers=self._headers, method="POST",
         )
         # No proxy: the request must go to this machine and nowhere else.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
@@ -364,6 +369,11 @@ class OpenAIChatModel:
                 break
             except urllib.error.HTTPError as error:
                 last_error = f"HTTP {error.code}"
+                try:
+                    code = json.loads(error.read().decode("utf-8"))["error"]["code"]
+                    last_error += f" {code}" if isinstance(code, str) else ""
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
                 if error.code < 500:
                     raise ModelError(f"model server refused the request ({last_error})") from None
             except (OSError, ValueError, KeyError, IndexError, TypeError) as error:
