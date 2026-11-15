@@ -24,6 +24,12 @@ keep-alive limits crash residency; it is not hardware isolation. 0.6.0 remains
 unchanged. See Builder ADR-0018 and CONTRACTS.md; the bounded capability check
 is frozen in `campaigns/s007e-001.json` and run with
 `uv run python scripts/s007e_check.py` (one next cell, at most four total).
+The check is now closed with partial coverage after a provider plan-limit stop:
+guided and C1 finished, C2 was censored, C3 was not started. Guided consultation
+and use of the returned answer worked; unguided specialist use is not established.
+Builder's `docs/experiments/2026-11-15-specialist-consultation.md` records the
+results and owner-directed partial closeout. The runner refuses further cells
+after the recorded provider stop; it does not silently restart the check.
 
 **S006a memory and checkpoints are implemented.** Minimal world 0.6.0 adds
 `memory.write`, `memory.search` and `memory.list`. Agent-owned SQLite data lives
@@ -397,8 +403,9 @@ and offload are explicitly unknown rather than inferred from the manifest.
 state event binds model provenance; `ols verify` checks both files. Resume
 revalidates pinned catalogs/settings and model identity. Old archives remain
 verifiable. The default output request is now explicitly 512 tokens when omitted.
-Server resources stay outside runtime job limits. Specialist consultation and
-GPU leasing remain S007e; no hosted provider is enabled.
+Server resources stay outside runtime job limits. S007e adds specialist consultation
+and one GPU lease; ChatGPT plan usage is enabled only under the owner's approved
+profile and milestone budgets. Other hosted routes remain separately gated.
 
 What does **not** exist yet:
 
