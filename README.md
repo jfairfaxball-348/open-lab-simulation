@@ -490,3 +490,7 @@ tests/fixtures/   a world release built by the Builder, used as test data
 ```
 
 Development rules: [AGENTS.md](AGENTS.md).
+
+## Licence
+
+Apache License 2.0; see [LICENSE](LICENSE).
