@@ -1,0 +1,615 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:open-lab:schema:study-analysis:v1",
+  "title": "study-analysis",
+  "description": "Offline S010b research interface; no runtime authority.",
+  "x-schema-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "source",
+    "study_id",
+    "question",
+    "registration",
+    "cells",
+    "groups",
+    "contrasts",
+    "annotations",
+    "validity_gates",
+    "limitations",
+    "comparison",
+    "requested_constants"
+  ],
+  "properties": {
+    "schema": {
+      "const": "open-lab/study-analysis"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_sha256",
+        "study_sha256",
+        "analyzer_sha256",
+        "annotations_sha256",
+        "schemas"
+      ],
+      "properties": {
+        "export_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "study_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "analyzer_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "annotations_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "schemas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "study_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registration": {
+      "type": "object"
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cell_id",
+          "role",
+          "condition",
+          "replicate",
+          "seed_label",
+          "declared_status",
+          "findings",
+          "record",
+          "trace"
+        ],
+        "properties": {
+          "cell_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "condition": {
+            "type": "string",
+            "minLength": 1
+          },
+          "replicate": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "seed_label": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ]
+          },
+          "declared_status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "record": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event_sha256",
+                  "events_by_type",
+                  "seqs",
+                  "repaired_tool_calls",
+                  "context_dropped_messages",
+                  "context_truncated_tool_results",
+                  "identical_call_repeats",
+                  "provider_censored",
+                  "no_recorded_tool_calls",
+                  "artifacts",
+                  "model",
+                  "policy",
+                  "requested"
+                ],
+                "properties": {
+                  "event_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "events_by_type": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "seqs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  "repaired_tool_calls": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "context_dropped_messages": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "context_truncated_tool_results": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "identical_call_repeats": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "signature_sha256",
+                        "seqs"
+                      ],
+                      "properties": {
+                        "signature_sha256": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "seqs": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "provider_censored": {
+                    "type": "boolean"
+                  },
+                  "no_recorded_tool_calls": {
+                    "type": "boolean"
+                  },
+                  "artifacts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "model": {
+                    "type": "object"
+                  },
+                  "policy": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "requested": {
+                    "type": "object"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "condition",
+          "cells",
+          "planned",
+          "with_archive",
+          "no_archive",
+          "declared_outcomes",
+          "recorded_outcomes",
+          "provider_censored"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "condition": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "planned": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "with_archive": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "no_archive": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "declared_outcomes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "recorded_outcomes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "provider_censored": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "contrasts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "conditions",
+          "cells",
+          "configuration_differences",
+          "recorded_field_agreement",
+          "causal_match",
+          "independence"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 1
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "configuration_differences": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "recorded_field_agreement": {
+            "enum": [
+              "different",
+              "unknown",
+              "equal_recorded_fields"
+            ]
+          },
+          "causal_match": {
+            "const": "not_established"
+          },
+          "independence": {
+            "const": "not_established"
+          }
+        }
+      }
+    },
+    "annotations": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "urn:open-lab:schema:study-annotations:v1",
+      "title": "study-annotations",
+      "description": "Offline S010b research interface; no runtime authority.",
+      "x-schema-version": "1.0.0",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "export_sha256",
+        "rubric",
+        "reviewer",
+        "limitations",
+        "entries"
+      ],
+      "properties": {
+        "schema": {
+          "const": "open-lab/study-annotations"
+        },
+        "schema_version": {
+          "type": "string",
+          "pattern": "^1\\.\\d+\\.\\d+$"
+        },
+        "export_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "rubric": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "definition"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "definition": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "reviewer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "masking"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "masking": {
+              "enum": [
+                "masked",
+                "unmasked",
+                "unknown"
+              ]
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "category",
+              "label",
+              "rationale",
+              "evidence",
+              "quote",
+              "quote_pointer"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "observation",
+                  "agent_claim",
+                  "assessment"
+                ]
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "enum": [
+                  "supported",
+                  "not_supported",
+                  "uncertain",
+                  "not_assessed"
+                ]
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "cell_id",
+                    "event_sha256",
+                    "seqs",
+                    "artifacts"
+                  ],
+                  "properties": {
+                    "cell_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "event_sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "seqs": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "artifacts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "uniqueItems": true
+                    }
+                  }
+                },
+                "minItems": 1
+              },
+              "quote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "quote_pointer": {
+                "enum": [
+                  null,
+                  "/payload/text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "validity_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "mechanical_status",
+          "checks",
+          "human_or_unverified"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "mechanical_status": {
+            "enum": [
+              "checked",
+              "findings",
+              "not_checked"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "human_or_unverified": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "minItems": 7,
+      "maxItems": 7
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "comparison": {
+      "type": "object"
+    },
+    "requested_constants": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -565,7 +565,7 @@ Named operational writer metadata and stderr logs are omitted with their origina
 hashes/sizes. No other privacy filtering is performed; publication requires its
 own review. Unknown initial state/model settings remain unknown. Requested
 constants are checked within roles, not treated as causal comparability. There
-is no autonomy score or generalized analysis in S010a (S010b), and no new Window
+is no autonomy score; S010b adds descriptive analysis below, and no new Window
 comparison interface (S010c).
 
 Verification is portable without the original data root, workspace or world.
@@ -575,6 +575,32 @@ changes, not arbitrary privileged races or an atomic filesystem snapshot.
 Historical campaign source pins stay frozen. Adding offline tooling changes the
 current aggregate source hash, so old launch scripts correctly refuse this newer
 checkout; exporter use requires no replay or historical manifest edits.
+
+## Source-bound descriptive analysis (S010b)
+
+```text
+uv run ols evidence analyze EXPORT --schemas SCHEMAS --sha256 EXPORT_PIN --out NEWDIR
+uv run ols evidence analyze EXPORT --schemas SCHEMAS --annotations ANNOTATIONS --out NEWDIR
+uv run ols evidence verify-analysis EXPORT REPORT --sha256 REPORT_PIN
+```
+
+Builder owns study-annotations/study-analysis 1.0.0 and the descriptive rubric in
+`docs/experiments/STUDY_ANALYSIS.md`. Reports retain every declared cell, group
+by role/condition, preserve failures/censoring and unknown settings, and expose
+configuration differences. No contrast is automatically causally matched or
+independent. Event vectors and full artifact revisions bind observations to
+sources. Separate typed annotations validate log hashes, sequence IDs, artifact
+references and exact quotes; semantic correctness remains investigator judgement.
+Missing or conflicting ratings remain visible. All seven research gates have
+explicit checked facts or unverified human requirements; this is never a GO.
+
+Only a new directory outside export/annotation sources is written. Output has
+analysis.json, report.md, normalized annotations and three bundled schemas.
+Verification recomputes the report from the associated export and those inputs,
+without the original data root or a network call. Aggregate normalized Simulation
+source is pinned; retain the matching checkout to reproduce an older report.
+Sources are checked before/after, failed staging retained, invalid or tampered
+exports/reports refused. No runtime, frozen campaign or Window changes.
 
 ## Licence
 

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:open-lab:schema:study-annotations:v1",
+  "title": "study-annotations",
+  "description": "Offline S010b research interface; no runtime authority.",
+  "x-schema-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "export_sha256",
+    "rubric",
+    "reviewer",
+    "limitations",
+    "entries"
+  ],
+  "properties": {
+    "schema": {
+      "const": "open-lab/study-annotations"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "export_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "rubric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "definition"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "definition": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "masking"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "masking": {
+          "enum": [
+            "masked",
+            "unmasked",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "category",
+          "label",
+          "rationale",
+          "evidence",
+          "quote",
+          "quote_pointer"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "observation",
+              "agent_claim",
+              "assessment"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "enum": [
+              "supported",
+              "not_supported",
+              "uncertain",
+              "not_assessed"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cell_id",
+                "event_sha256",
+                "seqs",
+                "artifacts"
+              ],
+              "properties": {
+                "cell_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "event_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "seqs": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "artifacts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "uniqueItems": true
+                }
+              }
+            },
+            "minItems": 1
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote_pointer": {
+            "enum": [
+              null,
+              "/payload/text"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

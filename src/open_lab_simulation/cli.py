@@ -12,6 +12,7 @@ from . import __version__, chatgpt, chatgpt_auth, credentials, gemini, ollama, p
 from .archive import verify_archive
 from .evidence import export_study, verify_export
 from .paths import data_root
+from .study_analysis import verify_analysis, write_analysis
 from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
 
 
@@ -84,7 +85,13 @@ def _cmd_measure(args: argparse.Namespace) -> int:
 
 def _cmd_evidence(args: argparse.Namespace) -> int:
     try:
-        result = (export_study(Path(args.study), Path(args.schemas),
+        if args.action == "analyze":
+            result = write_analysis(Path(args.directory), Path(args.schemas), Path(args.out),
+                                    args.annotations, args.sha256)
+        elif args.action == "verify-analysis":
+            result = verify_analysis(Path(args.directory), Path(args.report), args.sha256)
+        else:
+            result = (export_study(Path(args.study), Path(args.schemas),
                                Path(args.data_root) if args.data_root else data_root(),
                                Path(args.out))
                   if args.action == "export"
@@ -219,6 +226,19 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("directory")
     check.add_argument("--sha256", help="Externally retained SHA-256 of export.json.")
     check.set_defaults(func=_cmd_evidence)
+
+    analyze = actions.add_parser("analyze", help="Describe a verified export; no model calls.")
+    analyze.add_argument("directory")
+    analyze.add_argument("--schemas", required=True)
+    analyze.add_argument("--annotations")
+    analyze.add_argument("--sha256", help="Externally retained export.json pin.")
+    analyze.add_argument("--out", required=True)
+    analyze.set_defaults(func=_cmd_evidence)
+    analysis_check = actions.add_parser("verify-analysis", help="Recompute a source-bound report.")
+    analysis_check.add_argument("directory", help="Associated export directory.")
+    analysis_check.add_argument("report", help="Analysis report directory.")
+    analysis_check.add_argument("--sha256", help="Externally retained analysis.json pin.")
+    analysis_check.set_defaults(func=_cmd_evidence)
 
     measure = commands.add_parser(
         "measure-model",
