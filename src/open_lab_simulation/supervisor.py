@@ -344,6 +344,7 @@ def _prepare(
         recovery.policy(config)
         resources.validate(config)
         faults.enabled(config)
+        faults.runtime_kill_at(config)
     except ValueError as error:
         raise LaunchError(str(error)) from None
     reason = _unsupported(config, world)
@@ -901,6 +902,13 @@ def _run_prepared(
                 ),
             )
 
+        prior_stages = [
+            json.loads(line)["payload"].get("extensions", {}).get("stage")
+            for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8"))
+        ]
+        kill_at = faults.runtime_kill_at(config)
+        kill_in = (None if kill_at is None or faults.RUNTIME_KILL_STAGE in prior_stages
+                   else kill_at - (elapsed_offset + time.monotonic() - segment_started))
         final, reason = _supervise(
             tree,
             recorder,
@@ -923,6 +931,7 @@ def _run_prepared(
                 json.loads(line)["payload"].get("extensions", {}).get("stage") == "benchmark_fault"
                 for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))),
             consultation=consultation,
+            runtime_kill_in=kill_in,
         )
         if final == "terminated":
             change("stopping", reason)
@@ -1085,6 +1094,7 @@ def _supervise(
     benchmark_fault=False,
     fault_used=False,
     consultation=None,
+    runtime_kill_in=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -1097,6 +1107,7 @@ def _supervise(
 
     threading.Thread(target=pump, daemon=True).start()
     deadline = time.monotonic() + wall_clock_s
+    kill_at = None if runtime_kill_in is None else time.monotonic() + max(0.0, runtime_kill_in)
     termination = termination or {"on_deadline": "hard_stop"}
     graceful = termination["on_deadline"] == "checkpoint_then_stop"
     hard_deadline = deadline + (termination.get("grace_period_s", 0) if graceful else 0)
@@ -1411,6 +1422,15 @@ def _supervise(
 
     while ended is None:
         request_deadline()
+        if kill_at is not None and time.monotonic() >= kill_at:
+            kill_at = None
+            recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                            payload={"action": "terminated",
+                                     "detail": "registered reliability fault: runtime tree killed",
+                                     "extensions": {"stage": faults.RUNTIME_KILL_STAGE,
+                                                    "fault_id": faults.RUNTIME_KILL}})
+            recorder.sync()
+            tree.kill()
         remaining = hard_deadline - time.monotonic()
         if remaining <= 0:
             return deadline_stop()
@@ -1446,6 +1466,8 @@ def _supervise(
         try:
             # Wake at the nominal deadline even when there is a grace allowance.
             wait = min(remaining, 0.05 if controller is not None else 0.25)
+            if kill_at is not None:
+                wait = max(0.001, min(wait, kill_at - time.monotonic()))
             if accounting is not None:
                 wait = min(wait, max(0.001, accounting.lease_deadline - time.monotonic()))
             if not deadline_requested and graceful:
