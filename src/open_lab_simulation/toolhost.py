@@ -75,6 +75,7 @@ class ToolHost:
         admission=None,
         sandbox: Sandbox | None = None,
         before_execute=None,
+        service=None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -88,6 +89,7 @@ class ToolHost:
         self.admission = admission
         self.sandbox = sandbox
         self.before_execute = before_execute
+        self.service = service
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -182,6 +184,18 @@ class ToolHost:
             return {"status": "error", "error": f"invalid_input: {problem}"}
 
         invocation = manifest["invocation"]
+        if invocation == {"interface": "mcp", "server": "supervisor-gateway",
+                          "tool": "models.ask"}:
+            if self.before_execute and self.before_execute(capability_id, arguments):
+                return json.loads(json.dumps(faults.OUTCOME))
+            if self.service is None:
+                return {"status": "denied", "error": "supervisor service unavailable"}
+            outcome = self.service(arguments)
+            if outcome.get("status") == "ok":
+                problem = _first_error(manifest["output_schema"], outcome.get("result"))
+                if problem:
+                    return {"status": "error", "error": f"invalid_output: {problem}"}
+            return outcome
         # Inside a container the interpreter is the image's, and the runner is passed
         # as source so that no Simulation file is mounted into the sandbox.
         python = "python" if self.sandbox else sys.executable

@@ -68,6 +68,14 @@ class Channel:
         if not isinstance(self.read().get("seq"), int):
             raise ModelError("model input was not acknowledged; request not sent")
 
+    def specialist(self, arguments):
+        self._out.write(json.dumps({"specialist": arguments}) + "\n")
+        self._out.flush()
+        result = self.read().get("specialist_result")
+        if not isinstance(result, dict):
+            raise RuntimeError("specialist service was not acknowledged")
+        return result
+
     def end(self, reason: str, steps: int) -> None:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
         self._out.flush()
@@ -285,6 +293,7 @@ def main() -> int:
         admission=lambda: channel.denial,
         sandbox=sandbox,
         before_execute=channel.before_execute if spec.get("benchmark_fault") else None,
+        service=channel.specialist,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(

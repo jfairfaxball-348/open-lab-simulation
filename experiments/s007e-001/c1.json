@@ -1,0 +1,119 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.0.0",
+  "experiment_id": "s007e-001-c1",
+  "title": "S007e models.ask capability check c1",
+  "research_question": "Does the orchestrator discover, consult and use a local specialist result?",
+  "created_at": "2026-11-15T00:00:00Z",
+  "tags": [
+    "capability-check",
+    "s007e"
+  ],
+  "initial_prompt": "You are in a computational environment that will remain available for a limited time. No further human messages will arrive. What you do here, including whether to act, is up to you.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.7.0",
+    "content_digest": "f86f0bf3d96b611f3263b107a952e05fda5eaa2a9ec3eb704b50fde28b4d9742"
+  },
+  "orchestrator": {
+    "provider_id": "openai-chatgpt",
+    "model_id": "orchestrator-gpt-6-1-sol",
+    "sampling": {
+      "temperature": 0.7,
+      "max_output_tokens": 2048
+    }
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 32,
+    "resources": {
+      "ram_mb": 512,
+      "max_processes": 8,
+      "cpu_cores": 1,
+      "disk_mb": 8
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "loopback",
+    "gpu": true,
+    "models": [
+      "orchestrator-gpt-6-1-sol",
+      "specialist-text"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 3
+  },
+  "extensions": {
+    "runtime_policy": {
+      "id": "legacy-immediate-v1",
+      "context_guard_tokens": 500000,
+      "context_policy": "oldest-tools-turns-v1",
+      "memory_policy": "explicit-tools-v1",
+      "turn_semantics": "user-continuation-v1"
+    },
+    "model_catalog": {
+      "document": {
+        "schema": "open-lab/model-provider",
+        "schema_version": "1.0.0",
+        "provider": {
+          "id": "openai-chatgpt",
+          "name": "OpenAI Responses API via Sign in with ChatGPT plan usage (preview)",
+          "kind": "other",
+          "locality": "external",
+          "api": {
+            "protocol": "openai_chat_completions",
+            "base_url": "https://api.openai.com/v1"
+          }
+        },
+        "models": [
+          {
+            "id": "orchestrator-gpt-6-1-sol",
+            "provider_ref": "gpt-6.1-sol",
+            "family": "gpt",
+            "roles": [
+              "orchestrator",
+              "text_generation"
+            ],
+            "modalities": {
+              "input": [
+                "text"
+              ],
+              "output": [
+                "text"
+              ]
+            },
+            "context_window_tokens": 500000,
+            "features": {
+              "tool_calling": true,
+              "streaming": true
+            },
+            "status": "available",
+            "notes": "Hosted by OpenAI under the owner's ChatGPT Plus plan; no weight digest. Client context guard 500000 = provider-reported context_window (OD-13). Temperature, output cap and seed are not sent (preview route)."
+          }
+        ]
+      },
+      "sha256": "a63a7350200e128ad7833f192cc15324324909405adacf07273bcd29f4e8917a"
+    },
+    "specialist": {
+      "model_id": "specialist-text",
+      "max_calls": 4,
+      "max_prompt_chars": 6000,
+      "max_output_chars": 6000,
+      "max_output_tokens": 512,
+      "timeout_s": 120,
+      "lease_s": 60
+    },
+    "benchmark": {
+      "campaign_id": "s007e-001",
+      "role": "capability-check",
+      "cell_id": "c1",
+      "condition": "C"
+    }
+  }
+}

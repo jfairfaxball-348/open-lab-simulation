@@ -1,0 +1,60 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s007e-local-001",
+  "title": "S007e authorized local engineering check",
+  "created_at": "2026-11-15T00:00:00Z",
+  "initial_prompt": "Scripted engineering check; no hosted model.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.7.0",
+    "content_digest": "f86f0bf3d96b611f3263b107a952e05fda5eaa2a9ec3eb704b50fde28b4d9742"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 180,
+    "max_steps": 1
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none",
+    "gpu": true,
+    "models": [
+      "specialist-text"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "specialist": {
+      "model_id": "specialist-text",
+      "max_calls": 4,
+      "max_prompt_chars": 6000,
+      "max_output_chars": 6000,
+      "max_output_tokens": 512,
+      "timeout_s": 120,
+      "lease_s": 60
+    },
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "models.ask",
+                "arguments": {
+                  "prompt": "Give one limitation of using a single example to test a claim. Reply in one sentence."
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

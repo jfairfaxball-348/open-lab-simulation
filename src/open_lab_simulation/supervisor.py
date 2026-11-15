@@ -33,6 +33,7 @@ from . import (
     providers,
     recovery,
     resources,
+    specialist,
 )
 from .archive import verify_archive
 from .artifacts import WorkspaceScanner
@@ -89,6 +90,10 @@ class RunResult:
 
 def _unsupported(config: dict[str, Any], world: World) -> str | None:
     """Things the contracts allow but this runtime cannot yet honour. Refuse, never pretend."""
+    try:
+        specialist.policy(config, world)
+    except ValueError as error:
+        return str(error)
     if (
         config["termination"]["on_deadline"] == "checkpoint_then_stop"
         and "checkpointing" not in config
@@ -735,7 +740,27 @@ def _run_prepared(
     accounting = None
     controller = None
     broker = None
+    consultation = None
     try:
+        consumed = sum(
+            json.loads(line)["payload"].get("extensions", {}).get("stage")
+            == "specialist_call_reserved"
+            for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))
+        consultation = (specialist.Lease(config, world, archive.parent.parent.parent, consumed)
+                        if config.get("extensions", {}).get("specialist") is not None else None)
+        if consultation is not None:
+            recorder.record(
+                recorder="supervisor", type="supervisor.action", actor=supervisor,
+                payload={"action": "limit_enforced", "detail": "frozen specialist gateway",
+                         "extensions": {"stage": "specialist_configuration",
+                                        "policy": consultation.policy,
+                                        "model_manifest": consultation.model,
+                                        "provider_manifest": consultation.provider,
+                                        "adapter": "ollama-native-lease-v1",
+                                        "context_tokens_requested": 4096,
+                                        "temperature_requested": 0,
+                                        "effective_settings": "not independently attested"}})
+            recorder.sync()
         worker_model = model
         if model.get("hosted"):
             # Archives always live at <root>/runs/<experiment>/<run>.
@@ -836,6 +861,7 @@ def _run_prepared(
             fault_used=bool(resume and any(
                 json.loads(line)["payload"].get("extensions", {}).get("stage") == "benchmark_fault"
                 for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))),
+            consultation=consultation,
         )
         if final == "terminated":
             change("stopping", reason)
@@ -859,6 +885,9 @@ def _run_prepared(
     finally:
         if tree is not None:
             tree.kill()
+        if consultation is not None:
+            consultation.close()
+            _specialist_events(consultation, recorder, supervisor)
         if broker is not None:
             broker.stop()
             if broker.exhausted:
@@ -964,6 +993,18 @@ def _run_prepared(
     return RunResult(run_id, archive, workspace, final, reason, recorder.count, notes)
 
 
+def _specialist_events(consultation, recorder, actor):
+    while True:
+        try:
+            data = consultation.events.get_nowait()
+        except queue.Empty:
+            return
+        recorder.record(recorder="supervisor", type="supervisor.action", actor=actor,
+                        payload={"action": "limit_enforced",
+                                 "detail": "local specialist observation",
+                                 "extensions": data})
+
+
 def _supervise(
     tree: ProcessTree,
     recorder: Recorder,
@@ -982,6 +1023,7 @@ def _supervise(
     restored_policy=False,
     benchmark_fault=False,
     fault_used=False,
+    consultation=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
     process = tree.process
@@ -1009,6 +1051,9 @@ def _supervise(
     stop_sent = False
     last_denial = None
     inject_fault = False
+    specialist_result = None
+    service_arguments = {}
+    serviced = set()
 
     def refuse(message: str) -> None:
         recorder.record(
@@ -1040,13 +1085,38 @@ def _supervise(
     def handle(line: bytes, *, stopped: bool = False) -> None:
         nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
         nonlocal idle_recorded, fault_used, inject_fault
+        nonlocal specialist_result
         inject_fault = False
         last_seq = None
         last_denial = None
+        specialist_result = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             return refuse("not JSON")
+        if isinstance(message, dict) and "specialist" in message:
+            correlations = list(open_calls)
+            correlation = correlations[0] if len(correlations) == 1 else None
+            arguments = message["specialist"]
+            if (stopped or consultation is None or correlation in denied_calls
+                    or correlation in serviced or correlation not in service_arguments
+                    or arguments != service_arguments.get(correlation)):
+                specialist_result = {"status": "denied", "error": "invalid specialist admission"}
+                return None
+            serviced.add(correlation)
+
+            def reserve():
+                recorder.record(
+                    recorder="supervisor", type="supervisor.action", actor=supervisor,
+                    payload={"action": "limit_enforced", "detail": "reserved specialist call",
+                             "extensions": {"stage": "specialist_call_reserved",
+                                            "correlation_id": correlation,
+                                            "prompt": arguments["prompt"],
+                                            "model_id": consultation.policy["model_id"]}})
+                recorder.sync()
+
+            specialist_result = consultation.submit(arguments, reserve)
+            return None
         if isinstance(message, dict) and isinstance(message.get("state"), dict):
             # After killing a busy tree its live files no longer match a queued
             # barrier. Retain previous safe snapshots; never snapshot that state.
@@ -1183,11 +1253,23 @@ def _supervise(
                 ):
                     target = candidate
             open_calls[event["correlation_id"]] = target
+            if target == "models.ask" and consultation is not None:
+                args = payload.get("arguments", {})
+                if payload["capability_id"] == "capabilities.invoke":
+                    service_arguments[event["correlation_id"]] = args.get("arguments")
+                elif payload["capability_id"] == "capabilities.demonstrate":
+                    manifest = consultation.world.capabilities["models.ask"][1]
+                    demo = next((d for d in manifest["demonstrations"]
+                                 if d["id"] == args.get("demo_id", manifest[
+                                     "demonstrations"][0]["id"])), None)
+                    if demo:
+                        service_arguments[event["correlation_id"]] = demo["input"]
             if controller is not None and not stopped:
                 last_denial = controller.admit(target)
                 if last_denial:
                     denied_calls.add(event["correlation_id"])
         elif kind == "tool.result":
+            service_arguments.pop(event["correlation_id"], None)
             # The runtime is waiting for the acknowledgement, so whatever changed
             # in the workspace since the last scan happened during this call.
             capability_id = open_calls.pop(event["correlation_id"], None)
@@ -1224,7 +1306,8 @@ def _supervise(
         try:
             process.stdin.write(
                 (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent,
-                             "deny": last_denial, "inject_fault": inject_fault}) + "\n").encode()
+                             "deny": last_denial, "inject_fault": inject_fault,
+                             "specialist_result": specialist_result}) + "\n").encode()
             )
             process.stdin.flush()
         except OSError:
@@ -1270,6 +1353,13 @@ def _supervise(
         remaining = hard_deadline - time.monotonic()
         if remaining <= 0:
             return deadline_stop()
+        if consultation is not None:
+            _specialist_events(consultation, recorder, supervisor)
+            result = consultation.poll()
+            if result is not None:
+                _specialist_events(consultation, recorder, supervisor)
+                specialist_result = result
+                acknowledge()
         stopped_by_resource = resource_stop()
         if stopped_by_resource:
             return stopped_by_resource
@@ -1334,7 +1424,8 @@ def _supervise(
                 },
             )
             return "terminated", "deadline"
-        if ended is None and time.monotonic() < hard_deadline and (
+        if (ended is None and not (consultation and consultation.busy)
+                and time.monotonic() < hard_deadline) and (
             accounting is None or time.monotonic() < accounting.lease_deadline
         ):
             acknowledge()

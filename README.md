@@ -11,6 +11,20 @@ never code.
 
 ## Status
 
+S007e adds supervisor-mediated `models.ask` in minimal world 0.7.0. A hosted
+orchestrator can consult the approved installed local llama3.2:3b through one
+bounded lease. The runtime receives text, never a model-server address. The
+closed `extensions.specialist` configuration sets prompt/output/token/time,
+lease and per-run call ceilings. Permission checks still require GPU and
+`specialist-text`; the capability itself has no network/filesystem permission.
+The supervisor records/reserves calls before dispatch, monitors deadlines during
+inference, unloads on segment exit/expiry and reacquires on resume without
+replenishing the call budget. It refuses other resident models. Finite native
+keep-alive limits crash residency; it is not hardware isolation. 0.6.0 remains
+unchanged. See Builder ADR-0018 and CONTRACTS.md; the bounded capability check
+is frozen in `campaigns/s007e-001.json` and run with
+`uv run python scripts/s007e_check.py` (one next cell, at most four total).
+
 **S006a memory and checkpoints are implemented.** Minimal world 0.6.0 adds
 `memory.write`, `memory.search` and `memory.list`. Agent-owned SQLite data lives
 at `.memory.sqlite` in the workspace; `NOTES.md` is the optional working-notes
