@@ -89,8 +89,8 @@ def test_response_hides_thoughts_and_history_resends_original_parts():
     assert model_turn["role"] == "model" and THOUGHT not in json.dumps(body)
     assert model_turn["parts"] == [{"functionCall": {"name": "capabilities_search",
                                                      "args": {"query": "math"},
-                                                     "id": "gemini-call-1"},
-                                    "thoughtSignature": SIGNATURE}]
+                                                     "id": "gemini-call-1"}}]
+    assert SIGNATURE not in json.dumps(body)
     # Tool results and the continuation merge into one user turn, ids and names kept.
     assert body["contents"][2] == {"role": "user", "parts": [
         {"functionResponse": {"name": "capabilities_search", "id": "gemini-call-1",
@@ -182,7 +182,7 @@ def test_full_run_against_a_fake_gemini_server(tmp_path, monkeypatch, make_confi
     assert len(upstream.requests) == 2
     assert all(r["headers"]["X-Goog-Api-Key"] == SECRET for r in upstream.requests)
     second = upstream.requests[1]["body"]
-    assert second["contents"][1]["parts"][0]["thoughtSignature"] == SIGNATURE
+    assert "thoughtSignature" not in json.dumps(second)
     assert second["contents"][2]["parts"][0]["functionResponse"]["id"] == "gemini-call-1"
     assert THOUGHT not in json.dumps(upstream.requests[1]["body"])
     for path in result.archive.rglob("*"):
@@ -191,4 +191,5 @@ def test_full_run_against_a_fake_gemini_server(tmp_path, monkeypatch, make_confi
             assert THOUGHT not in text and SECRET not in text, path.name
     model = json.loads((result.archive / "model.json").read_text())
     assert model["settings"]["sampling_effective"]["thinking_level"].endswith("minimal")
+    assert model["hosted"]["adapter"]["version"] == "1.1.0"
     assert verify_archive(result.archive) == []

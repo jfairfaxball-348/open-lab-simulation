@@ -4,12 +4,16 @@ Translates the gateway's chat-completions conversation to Gemini contents and
 back, without inventing, filling or dropping tool arguments. The four meta-tool
 schemas are sent unchanged as JSON Schema (``parametersJsonSchema``), so the
 model sees what local models saw. Reasoning ("thought") parts are never returned
-to the runtime, because the Laboratory never records a reasoning channel. To resend
-model turns as Google requires, the broker keeps the original non-thought parts
-with their opaque thought signatures; thought text itself is discarded and never
-sent back or written anywhere.
+to the runtime, because the Laboratory never records a reasoning channel; thought
+text is discarded and never sent back or written anywhere.
 
-Translation version 1.0.0; any change to the mapping bumps it.
+Thought signatures are not resent (translation 1.1.0). In S014c, resending them
+after the runtime's context guard had dropped an earlier call turn made the API
+return HTTP 500 for both Gemma 4 models, while the same history without
+signatures was accepted; Gemma does not reject their absence. This is a
+provider-specific condition recorded in each run's settings.
+
+Translation version 1.1.0; any change to the mapping bumps it.
 """
 
 from __future__ import annotations
@@ -46,7 +50,7 @@ def _duration(value: Any) -> float | None:
 
 class GeminiAdapter:
     id = "gemini-generate-content"
-    version = "1.0.0"
+    version = "1.1.0"
     host = HOST
 
     # --- outgoing ------------------------------------------------------------------
@@ -164,8 +168,9 @@ class GeminiAdapter:
         if calls:
             message["tool_calls"] = calls
         # Ids we generated must also appear in the resent original parts. Thought text
-        # is dropped here; only opaque signatures travel back to the provider.
-        original = [dict(p) for p in parts if not p.get("thought")]
+        # and thought signatures are dropped here and never travel back.
+        original = [{k: v for k, v in p.items() if k != "thoughtSignature"}
+                    for p in parts if not p.get("thought")]
         generated = iter(c["id"] for c in calls)
         for part in original:
             if isinstance(part.get("functionCall"), dict):
@@ -213,6 +218,7 @@ class GeminiAdapter:
                                      if level else "not sent; provider default")
         support["tool_schema"] = "JSON Schema via parametersJsonSchema, unchanged"
         support["reasoning_channel"] = "thought parts withheld from the runtime and not recorded"
+        support["thought_signatures"] = "not resent (provider returned HTTP 500 when resent)"
         return support
 
 
