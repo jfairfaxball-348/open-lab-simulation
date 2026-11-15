@@ -235,6 +235,10 @@ class Plan:
     run_id: str
     campaign: str | None
     archive: Path
+    # ADR-0021: None, or the opted-in identity policy; then the first accepted
+    # response (or the run's earlier segments) fixes the provider-reported version.
+    identity_pin: str | None = None
+    pinned_version: str | None = None
 
 
 def _error(status: int, code: str, message: str) -> tuple[int, dict[str, Any]]:
@@ -253,6 +257,7 @@ class Broker:
         self.state: dict[str, Any] = {}
         self.exhausted: str | None = None
         self.terminal: str | None = None
+        self.pinned_version = plan.pinned_version
         self._lock = threading.Lock()
         self._stopped = False
         self._last_send = 0.0
@@ -344,6 +349,8 @@ class Broker:
                 started = time.monotonic()
                 outcome = self._send(upstream)
                 stopped = self._stopped
+                if outcome.kind == "ok" and self.plan.identity_pin:
+                    outcome = self._check_identity(outcome)
                 self.ledger.append({
                     "kind": "outcome", "id": ident, "time": time.time(), "result": outcome.kind,
                     "code": outcome.code, "usage": outcome.usage,
@@ -365,6 +372,18 @@ class Broker:
             return _error(424, "laboratory_provider_unavailable",
                           f"no usable provider reply after {profile['max_attempts_per_step']} "
                           f"attempts ({last})")
+
+    def _check_identity(self, outcome: Outcome) -> Outcome:
+        """A reply from another reported version is withheld and stops the run."""
+        version = outcome.model_version
+        if self.pinned_version is None and version:
+            self.pinned_version = version
+            return outcome
+        if version and version == self.pinned_version:
+            return outcome
+        return Outcome("terminal", f"provider_identity_changed:{version or 'unreported'}",
+                       usage=outcome.usage, model_version=version,
+                       finish_reason=outcome.finish_reason)
 
     def _exclusive(self, held: contextlib.ExitStack) -> bool:
         """Take the cross-process provider lock, waiting out one in-flight request."""

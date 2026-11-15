@@ -13,6 +13,13 @@ import time
 from . import ollama
 from .ownership import process_birth
 
+# ADR-0021: the only hosted identity a resumed hosted run may rely on. It is a
+# provider-reported version string, never a cryptographic attestation.
+HOSTED_IDENTITY = "provider-model-version-v1"
+# The only failure after which a hosted run may restart by itself: an
+# infrastructure fault inside the Laboratory, never a provider outcome.
+HOSTED_RECOVERABLE_PREFIX = "the agent runtime exited unexpectedly"
+
 
 def policy(config):
     value = config.get("extensions", {}).get("recovery")
@@ -20,8 +27,11 @@ def policy(config):
         return None
     if not isinstance(value, dict) or set(value) - {
         "max_restarts", "auto_resume", "health_check_interval_s", "health_check_timeout_s",
+        "hosted_identity",
     }:
         raise ValueError("invalid extensions.recovery policy")
+    if "hosted_identity" in value and value["hosted_identity"] != HOSTED_IDENTITY:
+        raise ValueError(f"recovery hosted_identity must be '{HOSTED_IDENTITY}'")
     if type(value.get("max_restarts")) is not int or not 0 <= value["max_restarts"] <= 100:
         raise ValueError("recovery max_restarts must be an integer from 0 to 100")
     if type(value.get("auto_resume", False)) is not bool:

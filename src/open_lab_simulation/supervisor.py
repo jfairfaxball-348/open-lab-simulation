@@ -215,6 +215,8 @@ def _resolve_model(config: dict[str, Any], world: World, root: Path) -> dict[str
         return _resolve_hosted(config, root, provider_id, provider, model, selected_catalog)
     try:
         settings = recovery.policy(config)
+        if settings and "hosted_identity" in settings:
+            raise ValueError("recovery hosted_identity applies only to hosted providers")
         identity = gateway.identify(
             provider, model["provider_ref"],
             timeout=settings["health_check_timeout_s"] if settings else 30,
@@ -246,8 +248,14 @@ def _resolve_model(config: dict[str, Any], world: World, root: Path) -> dict[str
 
 def _resolve_hosted(config, root, provider_id, provider, model, selected_catalog):
     """A hosted model, reached only through the supervisor's provider broker (ADR-0016)."""
-    if recovery.policy(config):
-        raise LaunchError("automatic recovery is not supported for hosted providers")
+    try:
+        settings = recovery.policy(config)
+    except ValueError as error:
+        raise LaunchError(str(error)) from None
+    pin_policy = settings.get("hosted_identity") if settings else None
+    if settings and pin_policy is None:
+        raise LaunchError("hosted recovery requires extensions.recovery.hosted_identity "
+                          f"'{recovery.HOSTED_IDENTITY}' (ADR-0021)")
     extensions = config.get("extensions", {})
     campaign = extensions.get("benchmark", {}).get("campaign_id")
     inference = extensions.get("hosted_inference", {})
@@ -270,8 +278,11 @@ def _resolve_hosted(config, root, provider_id, provider, model, selected_catalog
         "provider_ref": model["provider_ref"],
         "sampling": sampling,
         "identity": {"provider_ref": model["provider_ref"], "digest": None,
-                     "identity_limit": "hosted model: no weight digest; per-call model "
-                                       "versions are in provider-ledger.jsonl"},
+                     "identity_limit": (
+                         "hosted model: provider-reported model_version pin, not "
+                         "cryptographically attested (ADR-0021)" if pin_policy else
+                         "hosted model: no weight digest; per-call model "
+                         "versions are in provider-ledger.jsonl")},
         "provider_kind": provider["kind"],
         "catalog": selected_catalog,
         "model_manifest": model,
@@ -280,6 +291,7 @@ def _resolve_hosted(config, root, provider_id, provider, model, selected_catalog
             "adapter": {"id": adapter.id, "version": adapter.version, "host": adapter.host},
             "inference": inference,
             "campaign": campaign,
+            **({"identity_pin": pin_policy} if pin_policy else {}),
             "limits": profile["limits"],
             "max_attempts_per_step": profile["max_attempts_per_step"],
             "min_interval_s": profile["min_interval_s"],
@@ -440,7 +452,10 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     if world.digest != summary["world"]["content_digest"]:
         raise LaunchError("resuming requires the original world digest")
     prior_model = json.loads((archive / "model.json").read_text(encoding="utf-8"))
-    if model["real_model"] and not model.get("identity", {}).get("digest"):
+    hosted_pin = None
+    if model.get("hosted"):
+        hosted_pin = _hosted_resume_pin(archive, events, model, prior_model)
+    elif model["real_model"] and not model.get("identity", {}).get("digest"):
         raise LaunchError("resuming requires an attestable model digest")
     comparable = dict(model)
     if "runtime_policy" not in prior_model:
@@ -501,6 +516,7 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
         "summary": summary,
         "source": source,
         "stale": stale,
+        "hosted_pin": hosted_pin,
     }
     return _run_prepared(
         raw,
@@ -513,6 +529,37 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
         resume=resume,
         pause_after_steps=pause_after_steps,
     )
+
+# Error codes in the run's own events that mean the provider path stopped the run.
+_PROVIDER_STOPS = ("laboratory_provider_terminal", "laboratory_budget_exhausted",
+                   "laboratory_provider_stopped")
+
+
+def _hosted_resume_pin(archive, events, model, prior_model):
+    """ADR-0021: an opted-in, unchanged hosted run with one reported version, or refuse."""
+    if not model["hosted"].get("identity_pin"):
+        raise LaunchError("hosted resume requires extensions.recovery.hosted_identity "
+                          f"'{recovery.HOSTED_IDENTITY}' (ADR-0021)")
+    if model != prior_model:
+        raise LaunchError("hosted resume requires the original catalog, adapter, inference, "
+                          "sampling and broker profile")
+    for event in events:
+        if event["type"] == "error" and any(
+            code in json.dumps(event["payload"]) for code in _PROVIDER_STOPS
+        ):
+            raise LaunchError("hosted resume refused: the provider path stopped this run")
+    ledger = archive / "provider-ledger.jsonl"
+    entries = ([json.loads(line) for line in jsonl_lines(ledger.read_text(encoding="utf-8"))]
+               if ledger.exists() else [])
+    outcomes = [e for e in entries if e.get("kind") == "outcome"]
+    if any(e.get("result") == "terminal" for e in outcomes):
+        raise LaunchError("hosted resume refused: the provider ledger records a terminal outcome")
+    versions = {e.get("model_version") for e in outcomes if e.get("result") == "ok"}
+    if len(versions) > 1 or None in versions:
+        raise LaunchError("hosted resume refused: earlier segments report more than one "
+                          "model version")
+    return next(iter(versions), None)
+
 
 def _recovery_action(archive, stage, detail):
     """Append only under the caller's writer lock; keep the summary consistent."""
@@ -541,11 +588,13 @@ def _continue_recovery(result, root, config, pause_after_steps):
     settings = recovery.policy(config)
     if settings is None:
         return result
+    hosted = bool(json.loads((result.archive / "model.json").read_text(
+        encoding="utf-8")).get("hosted"))
     while result.state == "failed" and (
-        result.reason.startswith("the agent runtime exited unexpectedly")
-        or result.reason in (
+        result.reason.startswith(recovery.HOSTED_RECOVERABLE_PREFIX)
+        or (not hosted and result.reason in (
             "the model server could not produce a reply", "model health check failed",
-        )
+        ))
     ):
         events = [json.loads(line) for line in
                   jsonl_lines((result.archive / "events.jsonl").read_text(encoding="utf-8"))]
@@ -770,7 +819,18 @@ def _run_prepared(
                 profile={"limits": model["hosted"]["limits"],
                          **{k: model["hosted"][k] for k in providers.PROFILE_DEFAULTS}},
                 run_id=run_id, campaign=model["hosted"]["campaign"], archive=archive,
+                identity_pin=model["hosted"].get("identity_pin"),
+                pinned_version=resume.get("hosted_pin") if resume else None,
             )).start()
+            if resume and model["hosted"].get("identity_pin"):
+                recorder.record(recorder="supervisor", type="supervisor.action", actor=supervisor,
+                                payload={"action": "limit_enforced",
+                                         "detail": "hosted identity pin for this segment: "
+                                                   + (resume.get("hosted_pin") or "unpinned"),
+                                         "extensions": {
+                                             "stage": "hosted_identity_pin",
+                                             "policy": model["hosted"]["identity_pin"],
+                                             "model_version": resume.get("hosted_pin")}})
             # The run token reaches only the runtime's stdin, never model.json or events.
             worker_model = {**model, "base_url": broker.url, "auth_token": broker.token}
         controller = resources.Controller(config, workspace, world, recorder)
@@ -854,7 +914,8 @@ def _run_prepared(
             termination=config["termination"],
             accounting=accounting,
             health=(recovery.HealthMonitor(model, recovery.policy(config))
-                    if accounting and model["real_model"] else None),
+                    if accounting and model["real_model"] and not model.get("hosted")
+                    else None),
             controller=controller, runtime_policy=model["runtime_policy"],
             restored_policy=resume is not None,
             benchmark_fault=faults.enabled(config),

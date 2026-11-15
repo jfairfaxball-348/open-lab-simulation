@@ -205,7 +205,7 @@ def test_hosted_run_goes_through_the_broker_and_never_exposes_the_credential(
     ("no-profile", "not configured"),
     ("disabled", "disabled"),
     ("no-credential", "no credential"),
-    ("recovery", "recovery is not supported"),
+    ("recovery", "requires extensions.recovery.hosted_identity"),
 ])
 def test_unapproved_hosted_launches_are_refused(hosted, hosted_config, setup, expected):
     root, make = hosted

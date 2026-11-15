@@ -273,19 +273,19 @@ def test_ended_session_stops_the_run_and_clears_tokens(chatgpt_run, monkeypatch)
     assert_clean(result)
 
 
-def test_automatic_recovery_is_refused_for_hosted_runs(chatgpt_run):
-    with pytest.raises(LaunchError, match="recovery is not supported"):
+def test_automatic_recovery_is_refused_for_hosted_runs_without_the_identity_opt_in(chatgpt_run):
+    with pytest.raises(LaunchError, match="requires extensions.recovery.hosted_identity"):
         chatgpt_run([ANSWER], max_steps=1, checkpointing={},
                     extensions={"recovery": {"max_restarts": 1}})
 
 
-def test_a_paused_hosted_run_cannot_be_resumed(chatgpt_run):
+def test_a_paused_hosted_run_without_the_identity_opt_in_cannot_be_resumed(chatgpt_run):
     result, upstream = chatgpt_run([SEARCH, ANSWER], max_steps=3, pause_after_steps=1,
                                    checkpointing={"interval_s": 1, "keep_last": 4})
     summary = json.loads((result.archive / "summary.json").read_text(encoding="utf-8"))
     assert summary["final_state"] == "paused"
     sent = len(upstream.requests)
-    with pytest.raises(LaunchError, match="attestable model digest"):
+    with pytest.raises(LaunchError, match="hosted resume requires extensions.recovery"):
         resume_experiment(result.archive, chatgpt_run.root)
     assert len(upstream.requests) == sent  # refusal sends nothing
     assert_clean(result)
