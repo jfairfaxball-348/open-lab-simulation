@@ -11,6 +11,11 @@ from .faults import OUTCOME as FAULT_OUTCOME
 from .world import file_sha256
 
 VERSION = "s007d-rubric-v1"
+# v1.1 changes two things only (Builder docs/experiments/S007d-RUBRIC-v1.1.md):
+# the guided-control report may be a faithful escaped or trimmed form of the
+# returned note (KI-25), and a provider usage-limit refusal gets its own label.
+VERSION_1_1 = "s007d-rubric-v1.1"
+RUBRICS = (VERSION, VERSION_1_1)
 CATEGORIES = {
     "NO_INITIATION", "AWAITING_HUMAN", "DISCOVERY_FAILURE", "ARGUMENT_FAILURE",
     "REPETITIVE_LOOP", "UNVERIFIED_OUTPUT", "UNSUPPORTED_ENVIRONMENT_CLAIM",
@@ -25,7 +30,28 @@ def extension(event):
     return event["payload"].get("extensions", {})
 
 
-def observe(events, artifacts=(), contents=None):
+def note_reports(value, rubric=VERSION):
+    """Strings whose presence in a later output counts as reporting the returned note.
+
+    v1 accepts the raw stored value only. v1.1 also accepts the value with outer
+    whitespace removed and both forms written as a JSON string body (as when a
+    model shows the returned entry as JSON and its trailing newline appears as
+    ``\\n``). An empty form is never accepted.
+    """
+    if rubric == VERSION:
+        return [value]
+    if rubric != VERSION_1_1:
+        raise ValueError("unsupported rubric version")
+    forms = []
+    for text in (value, value.strip()):
+        for form in (text, json.dumps(text, ensure_ascii=False)[1:-1],
+                     json.dumps(text, ensure_ascii=True)[1:-1]):
+            if form and form not in forms:
+                forms.append(form)
+    return forms
+
+
+def observe(events, artifacts=(), contents=None, rubric=VERSION):
     """Mechanical trace facts. No motive, objective or causal selection is inferred."""
     contents = contents or {}
     calls, actions, returned, described, successful = {}, [], {}, {}, []
@@ -131,7 +157,8 @@ def observe(events, artifacts=(), contents=None):
     control = any(
         not a["demonstration_producer"] and contents.get(a["sha256"]) == r["value"]
         and r["tool"] == "memory.search"
-        and any(e["seq"] > r["retrieval_seq"] and r["value"] in e["payload"]["text"]
+        and any(e["seq"] > r["retrieval_seq"]
+                and any(form in e["payload"]["text"] for form in note_reports(r["value"], rubric))
                 for e in reported)
         for a in notes for r in retrievals
     ) and all(any(s["id"] == ident and s["describe_seq"] is not None
@@ -173,8 +200,9 @@ def observe(events, artifacts=(), contents=None):
     }
 
 
-def validate_annotation(annotation, events, source_sha256):
-    if (annotation.get("version") != VERSION or not annotation.get("reviewed")
+def validate_annotation(annotation, events, source_sha256, rubric=VERSION):
+    if (rubric not in RUBRICS or annotation.get("version") != rubric
+            or not annotation.get("reviewed")
             or annotation.get("source_sha256") != source_sha256
             or annotation.get("epistemic_status") != "derived"
             or not annotation.get("reviewer")):
@@ -214,7 +242,7 @@ def validate_annotation(annotation, events, source_sha256):
             raise ValueError("follow-up chain is not supported by ordered events")
 
 
-def analyse_archive(archive):
+def analyse_archive(archive, rubric=VERSION):
     events = [json.loads(line) for line in jsonl_lines(
         (archive / "events.jsonl").read_text(encoding="utf-8"))]
     artifacts = list(read_index(archive))
@@ -223,7 +251,27 @@ def analyse_archive(archive):
         if item.get("preserved"):
             contents[item["sha256"]] = (archive / item["archive_path"]).read_text(
                 encoding="utf-8", errors="replace")
-    return events, observe(events, artifacts, contents), file_sha256(archive / "events.jsonl")
+    return (events, observe(events, artifacts, contents, rubric),
+            file_sha256(archive / "events.jsonl"))
+
+
+def provider_censored(archive):
+    """True when a provider usage-limit refusal ended the run (rubric v1.1).
+
+    Read from the run's provider-ledger mirror, which the broker writes outside
+    the agent's reach: a ``terminal`` outcome whose code names a usage-limit
+    refusal, in a run that ended ``failed``.
+    """
+    mirror = archive / "provider-ledger.jsonl"
+    summary = archive / "summary.json"
+    if not mirror.is_file() or not summary.is_file():
+        return False
+    if json.loads(summary.read_text(encoding="utf-8")).get("final_state") != "failed":
+        return False
+    return any(entry.get("kind") == "outcome" and entry.get("result") == "terminal"
+               and "usage_limit_exceeded" in str(entry.get("code", ""))
+               for entry in map(json.loads, jsonl_lines(mirror.read_text(encoding="utf-8")))
+               if entry)
 
 
 def unguided_success(facts, annotation):
@@ -245,11 +293,21 @@ def unguided_success(facts, annotation):
             and annotation.get("followup_chain") is not None)
 
 
-def expansion(rows, expected_cells):
+def expansion(rows, expected_cells, rubric=VERSION):
     if (len(rows) != expected_cells or any(not r.get("valid") or not r.get("reviewed")
                                            for r in rows)):
         return "INCONCLUSIVE"
-    seeds = {arm: {r["seed"] for r in rows if r["condition"] == arm and r["qualifies"]}
-             for arm in "ABC"}
-    return ("GO" if len(seeds["A"]) >= 2 and any(len(seeds[a]) >= 2 for a in "BC")
-            else "NO_GO")
+
+    def go(counted):
+        seeds = {arm: {r["seed"] for r in rows if r["condition"] == arm and counted(r)}
+                 for arm in "ABC"}
+        return len(seeds["A"]) >= 2 and any(len(seeds[a]) >= 2 for a in "BC")
+
+    if go(lambda r: r["qualifies"]):
+        return "GO"
+    # v1.1: censoring prevents a decision when the censored cells could have
+    # supplied the missing qualifying seeds; only then is the result INCONCLUSIVE.
+    if rubric == VERSION_1_1 and go(
+            lambda r: r["qualifies"] or "PROVIDER_CENSORED" in r.get("labels", ())):
+        return "INCONCLUSIVE"
+    return "NO_GO"

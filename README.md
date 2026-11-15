@@ -276,6 +276,19 @@ invocations and zero repairs. See Builder
 `docs/experiments/2026-11-14-model-swap-reevaluation.md`. The next route is a
 registered decision (OD-9); no further campaign or improvement is implemented.
 
+**Campaign v1.1 and rubric v1.1 (S014m).** A manifest of version
+`s007d-campaign-v1.1` is scored with rubric v1.1 (Builder
+`docs/experiments/S007d-RUBRIC-v1.1.md`): the guided-control report may be the
+returned note exactly, trimmed, or as a JSON string body, and a run ended by a
+provider usage-limit refusal is labelled `PROVIDER_CENSORED` (INCONCLUSIVE only
+when censored cells could have changed the gate decision). v1.1 manifests carry
+their own seed labels (evaluation below 900, pilots 900 and above) and the
+provider-stop rule: after a cell that failed or whose provider use ended
+terminally, the runner records `provider_stop` and starts no further cell until
+it is run with `--clearance "<operator note>"`, which is recorded in the ledger.
+v1 manifests, their pins and their scoring are unchanged. All recorded JSONL is
+read on `"\n"` only (S014l), so text holding U+2028/U+2029/U+0085 verifies.
+
 **S007d benchmark tooling is implemented.**
 `python -m open_lab_simulation.benchmark run <manifest> --registration <commit>`
 executes at most four scheduled cells per invocation (override `--max-cells`).
