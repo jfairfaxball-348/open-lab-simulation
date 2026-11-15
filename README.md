@@ -541,6 +541,41 @@ tests/fixtures/   a world release built by the Builder, used as test data
 
 Development rules: [AGENTS.md](AGENTS.md).
 
+## Offline study evidence (S010a)
+
+These commands inspect existing records only; they never launch a model:
+
+```text
+uv run ols evidence export STUDY --schemas SCHEMAS --data-root DATA --out NEWDIR
+uv run ols evidence verify NEWDIR --sha256 MANIFEST_SHA256
+```
+
+The Builder owns `study-manifest` and `evidence-export` research schemas and
+`docs/experiments/STUDY_PROTOCOL.md`. Supply its schema directory explicitly;
+Simulation imports no Builder code. A study declares all planned cells, roles,
+configuration pins, outcomes, comparison assumptions and optional raw-byte-pinned
+attachments. Export preserves stopped verified archives and every declared cell,
+including failed/unstarted ones. It refuses writer markers, unsealed/damaged
+archives, links/reparse points, unsafe paths, source changes and existing output.
+Inside DATA, output must be under `exports/`. Failed stages are retained.
+
+Bundles contain inputs, four research/configuration schemas, recorded archives,
+and a deterministic manifest of byte hashes, record facts and explicit findings.
+Named operational writer metadata and stderr logs are omitted with their original
+hashes/sizes. No other privacy filtering is performed; publication requires its
+own review. Unknown initial state/model settings remain unknown. Requested
+constants are checked within roles, not treated as causal comparability. There
+is no autonomy score or generalized analysis in S010a (S010b), and no new Window
+comparison interface (S010c).
+
+Verification is portable without the original data root, workspace or world.
+Keep the manifest SHA-256 separately: internal consistency alone does not prove
+authenticity or preregistration. Pre/post hashes detect cooperative stopped-source
+changes, not arbitrary privileged races or an atomic filesystem snapshot.
+Historical campaign source pins stay frozen. Adding offline tooling changes the
+current aggregate source hash, so old launch scripts correctly refuse this newer
+checkout; exporter use requires no replay or historical manifest edits.
+
 ## Licence
 
 Apache License 2.0; see [LICENSE](LICENSE).

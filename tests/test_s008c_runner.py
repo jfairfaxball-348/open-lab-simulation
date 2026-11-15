@@ -26,6 +26,9 @@ def runner(tmp_path, monkeypatch):
 
     monkeypatch.setattr(module, "run_experiment", refused)
     manifest = json.loads((repo / "campaigns/s008c-001.json").read_text(encoding="utf-8"))
+    # These gate tests model the registered checkout; offline tooling added
+    # later must not cause us to rewrite its historical source pin.
+    monkeypatch.setattr(module, "source_hashes", lambda: manifest["source_sha256"])
     return module, manifest
 
 
@@ -44,6 +47,13 @@ def test_no_clearance_starts_no_run(runner, tmp_path):
     with pytest.raises(SystemExit, match="quota confirmation required"):
         module.main()
     assert not (tmp_path / "capability-checks/s008c-001/progress.json").exists()
+
+
+def test_changed_checkout_refuses_historical_runner(runner, monkeypatch):
+    module, manifest = runner
+    monkeypatch.setattr(module, "source_hashes", lambda: {"changed": "0" * 64})
+    with pytest.raises(SystemExit, match="source differs"):
+        module.main()
 
 
 def test_clearance_cannot_bypass_provider_stop(runner, tmp_path, monkeypatch):

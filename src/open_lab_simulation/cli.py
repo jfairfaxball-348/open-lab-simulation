@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import __version__, chatgpt, chatgpt_auth, credentials, gemini, ollama, providers  # noqa: F401
 from .archive import verify_archive
+from .evidence import export_study, verify_export
 from .paths import data_root
 from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
 
@@ -78,6 +79,20 @@ def _cmd_measure(args: argparse.Namespace) -> int:
         print(f"Measurement failed: {error}", file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2))
+    return 0
+
+
+def _cmd_evidence(args: argparse.Namespace) -> int:
+    try:
+        result = (export_study(Path(args.study), Path(args.schemas),
+                               Path(args.data_root) if args.data_root else data_root(),
+                               Path(args.out))
+                  if args.action == "export"
+                  else verify_export(Path(args.directory), args.sha256))
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"Evidence command refused: {error}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, indent=2))
     return 0
 
 
@@ -191,6 +206,19 @@ def build_parser() -> argparse.ArgumentParser:
     verify = commands.add_parser("verify", help="Check a run archive is complete and untampered.")
     verify.add_argument("archive", help="Run archive: <data root>/runs/<experiment>/<run>.")
     verify.set_defaults(func=_cmd_verify)
+
+    evidence = commands.add_parser("evidence", help="Offline study evidence export/verification.")
+    actions = evidence.add_subparsers(dest="action", required=True)
+    export = actions.add_parser("export", help="Copy stopped study records to a new directory.")
+    export.add_argument("study", help="Pinned study-manifest JSON, not a launch configuration.")
+    export.add_argument("--schemas", required=True, help="Research/config schema directory.")
+    export.add_argument("--data-root")
+    export.add_argument("--out", required=True, help="New directory outside sources; no overwrite.")
+    export.set_defaults(func=_cmd_evidence)
+    check = actions.add_parser("verify", help="Verify an export without the source data root.")
+    check.add_argument("directory")
+    check.add_argument("--sha256", help="Externally retained SHA-256 of export.json.")
+    check.set_defaults(func=_cmd_evidence)
 
     measure = commands.add_parser(
         "measure-model",

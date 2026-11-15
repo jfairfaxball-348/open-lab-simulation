@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:open-lab:schema:study-manifest:v1",
+  "title": "Study manifest with complete planned cells",
+  "description": "Study manifest with complete planned cells; research interchange only, not a world/runtime contract.",
+  "x-schema-version": "1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "study_id",
+    "question",
+    "registration",
+    "comparison",
+    "cells",
+    "attachments"
+  ],
+  "properties": {
+    "schema": {
+      "const": "open-lab/study-manifest",
+      "description": "Schema."
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$",
+      "description": "Document version; readers refuse unsupported major or newer minor versions."
+    },
+    "study_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+      "maxLength": 128,
+      "description": "Study id."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Question."
+    },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "commit",
+        "statement"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "prospective",
+            "historical",
+            "engineering"
+          ]
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "prospective"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "commit": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Registration."
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_fields",
+        "constant_fields",
+        "seed_interpretation",
+        "analysis_policy",
+        "limitations"
+      ],
+      "properties": {
+        "changed_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "constant_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          },
+          "minItems": 0
+        },
+        "seed_interpretation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      },
+      "description": "Comparison."
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cell"
+      },
+      "minItems": 1,
+      "description": "Cells."
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "registration",
+              "analysis_plan",
+              "annotation"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*:)[^\\x00-\\x1f]+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "minItems": 0,
+      "description": "Attachments."
+    }
+  },
+  "$defs": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*:)[^\\x00-\\x1f]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experiment_id",
+        "run_id"
+      ],
+      "properties": {
+        "experiment_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+          "maxLength": 128,
+          "description": "Study id."
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+          "maxLength": 128,
+          "description": "Study id."
+        }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_id",
+        "role",
+        "condition",
+        "replicate",
+        "seed_label",
+        "configuration",
+        "outcome"
+      ],
+      "properties": {
+        "cell_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+          "maxLength": 128,
+          "description": "Study id."
+        },
+        "role": {
+          "enum": [
+            "pilot",
+            "evaluation",
+            "capability_check",
+            "engineering"
+          ]
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replicate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed_label": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "configuration": {
+          "$ref": "#/$defs/input"
+        },
+        "outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "archive",
+            "detail"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "recorded",
+                "not_started",
+                "launch_failed",
+                "interrupted"
+              ]
+            },
+            "archive": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/archive"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "status": {
+                    "const": "recorded"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "archive": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "not_started",
+                      "launch_failed"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "archive": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
