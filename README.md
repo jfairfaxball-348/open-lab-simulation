@@ -249,8 +249,9 @@ account's models. The adapter (`openai-responses-chatgpt-plan` 1.0.0) sends
 stateless Responses requests (`store: false`, `stream: true`, tools in one
 namespace, `strict: false`), refreshes tokens near expiry, never sends
 temperature, top-p, output cap or seed (recorded as differences), and never
-resends or records reasoning items. No live request has been made by this code
-yet.
+resends or records reasoning items. Live checks (S014d, S014g) completed a
+tool-use round trip on `gpt-6.1-sol`. `tests/test_hosted_compatibility.py` is
+the S014g admission suite: 18 full supervised runs against a fake provider.
 
 **Hosted provider broker (S014b) is implemented.** Adapters exist for Google
 Gemini (S014c) and ChatGPT plan usage (S014d).
