@@ -26,6 +26,7 @@ from . import (
     container,
     faults,
     gateway,
+    gemini,  # noqa: F401 - registers the Gemini adapter
     ollama,
     policies,
     providers,

@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import __version__, credentials, ollama, providers
+from . import __version__, credentials, gemini, ollama, providers  # noqa: F401
 from .archive import verify_archive
 from .paths import data_root
 from .supervisor import LaunchError, recover_interrupted, resume_experiment, run_experiment
