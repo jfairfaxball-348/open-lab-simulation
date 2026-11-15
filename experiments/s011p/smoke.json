@@ -1,0 +1,109 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.0.0",
+  "experiment_id": "s011p-smoke",
+  "title": "S011p Luna low-effort tool-use smoke (NOT_SCORED)",
+  "research_question": "Engineering check (NOT_SCORED): does gpt-5.6-luna on the ChatGPT plan-usage route accept reasoning.effort=low and complete discovery, describe, one direct math.evaluate invocation and a result-informed reply?",
+  "created_at": "2026-11-15T00:00:00Z",
+  "tags": [
+    "engineering-check",
+    "tool-use",
+    "s011p",
+    "not-scored"
+  ],
+  "initial_prompt": "For this engineering check: use the discovery interface to search for a capability that evaluates arithmetic, read its description, invoke it on the expression 6*7, then reply with one sentence stating the result the capability returned.",
+  "world": {
+    "world_id": "minimal",
+    "version": "0.8.0",
+    "content_digest": "8d0f5747888110a85456064b9900fa782e94e566f2e4811aa3b3ac07eee69110"
+  },
+  "orchestrator": {
+    "provider_id": "openai-chatgpt",
+    "model_id": "orchestrator-gpt-5-6-luna",
+    "sampling": {
+      "temperature": 0.7,
+      "max_output_tokens": 2048
+    }
+  },
+  "limits": {
+    "wall_clock_s": 180,
+    "max_steps": 8,
+    "resources": {
+      "ram_mb": 512,
+      "max_processes": 8,
+      "cpu_cores": 1,
+      "disk_mb": 8
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "loopback",
+    "gpu": false,
+    "models": [
+      "orchestrator-gpt-5-6-luna"
+    ]
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 3
+  },
+  "extensions": {
+    "runtime_policy": {
+      "id": "quiet-until-deadline-v1",
+      "max_tool_free_replies": 1,
+      "context_guard_tokens": 272000,
+      "context_policy": "oldest-tools-turns-v1",
+      "memory_policy": "explicit-tools-v1",
+      "turn_semantics": "user-continuation-v1"
+    },
+    "model_catalog": {
+      "document": {
+        "schema": "open-lab/model-provider",
+        "schema_version": "1.0.0",
+        "provider": {
+          "id": "openai-chatgpt",
+          "name": "OpenAI Responses API via Sign in with ChatGPT plan usage (preview)",
+          "kind": "other",
+          "locality": "external",
+          "api": {
+            "protocol": "openai_chat_completions",
+            "base_url": "https://api.openai.com/v1"
+          }
+        },
+        "models": [
+          {
+            "id": "orchestrator-gpt-5-6-luna",
+            "provider_ref": "gpt-5.6-luna",
+            "family": "gpt",
+            "roles": [
+              "orchestrator",
+              "text_generation"
+            ],
+            "modalities": {
+              "input": [
+                "text"
+              ],
+              "output": [
+                "text"
+              ]
+            },
+            "context_window_tokens": 272000,
+            "features": {
+              "tool_calling": true,
+              "streaming": true
+            },
+            "status": "available",
+            "notes": "Hosted by OpenAI under the owner's ChatGPT Plus plan; no weight digest. Client context guard 272000 = provider-reported context_window for gpt-5.6-luna (model list read 2026-11-15; max_context_window 872000 not used). Provider default reasoning level is medium; reasoning.effort=low is sent explicitly (owner requirement). Temperature, output cap and seed are not sent (preview route)."
+          }
+        ]
+      },
+      "sha256": "b41c78924c868554b741dda6716d5b891ed4b3b7fa5f6046d8c3902ffab3b137"
+    },
+    "hosted_inference": {
+      "reasoning_effort": "low"
+    }
+  }
+}
