@@ -663,6 +663,21 @@ source is pinned; retain the matching checkout to reproduce an older report.
 Sources are checked before/after, failed staging retained, invalid or tampered
 exports/reports refused. No runtime, frozen campaign or Window changes.
 
+## Habitat v1 integrated acceptance (S019)
+
+S019 supplies a generated **Habitat 1.0.0** fixture and integrated scripted
+acceptance configurations in `experiments/habitat/s019-parent-demo.json` and
+`s019-child-demo.json`. The parent combines discovery, file inspection/search,
+program failure/repair/reuse, memory, procedures, sandbox-validated tools,
+phenomena and self-scheduled waking. Pause after step 24 and resume to exercise
+checkpointed field/wake/tool continuity. Launch the child with `ols run ...
+--from-run <parent archive>` after the parent completes; it inherits files and
+memory and validates the saved tool source again with new run provenance.
+The live integration test is `tests/test_habitat_v1.py` (set
+`OPEN_LAB_REQUIRE_CONTAINER=1` to require the backend). These are prescribed
+engineering demonstrations; they make no autonomy claim and use no model
+inference. The Builder owns the twelve-freedom evidence map and S012 draft.
+
 ## Licence
 
 Apache License 2.0; see [LICENSE](LICENSE).

@@ -1,0 +1,243 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s019-child-demo",
+  "title": "S019 integrated Habitat v1 engineering demonstration (child)",
+  "research_question": "None. Scripted integrated engineering acceptance of twelve available freedoms; no independent choice or autonomy is tested.",
+  "created_at": "2026-11-16T00:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check",
+    "habitat",
+    "s019"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "habitat",
+    "version": "1.0.0",
+    "content_digest": "03d9ea8fb2c13a9bbd4d0cdbf1e979cbc6db3a1df839a940e70d4d47059735e6"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 50,
+    "resources": {
+      "ram_mb": 512,
+      "cpu_cores": 1,
+      "max_processes": 64,
+      "disk_mb": 64
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "journal.md"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "project.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "memory.search",
+                "arguments": {
+                  "query": "project.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "skills.get",
+                "arguments": {
+                  "id": "sum-check"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "result.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.observe",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "tools.create",
+                "arguments": {
+                  "id": "agent.double",
+                  "source_path": "double.py",
+                  "name": "Double an integer",
+                  "summary": "Double an integer.",
+                  "description": "Returns twice the input integer.",
+                  "keywords": [
+                    "double",
+                    "arithmetic"
+                  ],
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "output_schema": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "examples": [
+                    {
+                      "input": {
+                        "value": 3
+                      },
+                      "expected_output": {
+                        "value": 6
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "agent.double",
+                "arguments": {
+                  "value": 60
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "code": "from project import total\nfrom pathlib import Path\nPath('child-result.txt').write_text(str(total([10,20,30])),encoding='utf-8')\nprint(total([10,20,30]))"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "child-result.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "time.remaining",
+                "arguments": {}
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "runtime_policy": {
+      "id": "self-scheduled-v1",
+      "max_sleep_s": 5
+    },
+    "phenomena": {
+      "seed": 41
+    }
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 4
+  },
+  "capabilities": {
+    "agent_created_tools": true
+  }
+}
