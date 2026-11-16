@@ -1,0 +1,183 @@
+# Read remaining time (time.remaining)
+
+## categories
+
+[
+  "time",
+  "runtime"
+]
+
+## demonstrations
+
+[
+  {
+    "deterministic": false,
+    "explanation": "Real supervisor time service when enabled. Builder self-tests return an explicitly unavailable fake; no clock read or wait occurs at build time.",
+    "id": "remaining",
+    "input": {},
+    "title": "Read time"
+  }
+]
+
+## description
+
+Read the original run wall-clock budget remaining in integer milliseconds. elapsed_ms counts active run time, including sleeping but excluding operator-paused downtime. remaining_ms excludes deadline grace and is only a snapshot: delivery and later work consume more time. This capability cannot change any limit.
+
+## failure_modes
+
+[
+  {
+    "condition": "Unsupported policy, denied service, invalid arguments or wake beyond remaining budget.",
+    "recovery": "Read remaining time and use a permitted bounded request. Only experiment configuration grants policy/permissions.",
+    "symptom": "A recorded denial/error without scheduling a wake."
+  }
+]
+
+## id
+
+time.remaining
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {},
+  "required": [],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "interface": "mcp",
+  "server": "supervisor-time",
+  "tool": "time.remaining"
+}
+
+## keywords
+
+[
+  "time",
+  "remaining",
+  "budget",
+  "deadline",
+  "wake",
+  "sleep"
+]
+
+## limitations
+
+[
+  "Does not extend deadlines, step budgets, permissions or any other limit.",
+  "Sleep uses active run time, not a wall-clock alarm across stopped runs; no external scheduler is installed.",
+  "Wake delivery is checked at bounded runtime barriers; it is not a real-time guarantee."
+]
+
+## name
+
+Read remaining time
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "remaining_ms",
+          "elapsed_ms",
+          "budget_ms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "maxProperties": 1
+      }
+    }
+  ],
+  "properties": {
+    "available": {
+      "type": "boolean"
+    },
+    "budget_ms": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "elapsed_ms": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remaining_ms": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "available"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 0,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "remaining"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Read the original active wall-clock budget remaining.
+
+## version
+
+0.1.0

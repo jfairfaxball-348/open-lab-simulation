@@ -11,6 +11,14 @@ never code.
 
 ## Status
 
+**S020b completes the offline library and procedural audiovisual workshop.**
+Habitat 1.2.0 adds immutable licensed reference/data assets, library.search/read
+and a new image with FFmpeg/ffprobe. Python programs can synthesize sound, draw
+and animate frames, edit/mix/compose media and inspect results in the sandbox.
+[Media provisioning and component verification](workshop/MEDIA.md) preserves
+old images/worlds. Actual reference, media, artifact/checkpoint/data-only lineage
+checks pass without an inhabitant loop or inference. S021 is next.
+
 **S020a scientific workshop is implemented.** Habitat 1.1.0 binds an operator-
 provisioned scientific image by immutable local configuration ID. Missing or
 mismatched images are refused without pulling; older worlds keep their original
@@ -20,7 +28,7 @@ pinned stack and limits. Direct sandbox/component checks cover maths, CSV,
 plots, project repair and artifact revisions. No inhabitant loop or model
 inference was run for S020a. ADR-0027 suspends all further inhabitant simulations;
 the run commands below describe historical facilities, not current launch
-instructions. S020b is next in the Builder roadmap.
+instructions. S020b is complete; S021 is next in the Builder roadmap.
 
 **Habitat development (ADR-0022 in the Builder) is active.** S016a adds the
 generated Habitat 0.2.1 fixture and a scripted saved-skill demonstration:

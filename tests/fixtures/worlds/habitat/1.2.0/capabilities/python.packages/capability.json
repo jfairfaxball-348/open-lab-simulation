@@ -1,0 +1,121 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "python.packages",
+  "version": "0.1.0",
+  "name": "Inspect scientific Python packages",
+  "summary": "List installed versions of the scientific workshop packages or named distributions.",
+  "description": "Inspect installed distribution metadata without importing executable modules. Default names: numpy, scipy, sympy, mpmath, pandas, matplotlib, pillow. Optional names (at most 32) checks other distribution names; a null version means not installed. Does not install/download or grant any permission. Use python.run with help() for offline library docstrings; projects, computations, plots and raster images can be created and revised in your workspace.",
+  "categories": [
+    "code",
+    "computation"
+  ],
+  "keywords": [
+    "packages",
+    "python",
+    "science",
+    "versions",
+    "numpy",
+    "sympy",
+    "pandas",
+    "matplotlib",
+    "pillow"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "names": {
+        "type": "array",
+        "maxItems": 32,
+        "items": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$"
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "packages"
+    ],
+    "properties": {
+      "packages": {
+        "type": "array",
+        "maxItems": 32,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 10,
+    "ram_mb": 128
+  },
+  "demonstrations": [
+    {
+      "id": "missing-package",
+      "input": {
+        "names": [
+          "open-lab-missing-package"
+        ]
+      },
+      "expected_output": {
+        "packages": [
+          {
+            "name": "open-lab-missing-package",
+            "version": null
+          }
+        ]
+      },
+      "title": "Unavailable distributions are reported explicitly, never installed."
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "missing-package"
+    ]
+  },
+  "limitations": [
+    "Characters are Unicode code points, not grapheme clusters, so some emoji count as more than one.",
+    "Input longer than 1,000,000 characters is rejected."
+  ],
+  "failure_modes": [
+    {
+      "condition": "The 'text' argument is missing or is not a string.",
+      "symptom": "The call is rejected before execution with an input validation error.",
+      "recovery": "Pass the text as a JSON string under the key 'text'."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

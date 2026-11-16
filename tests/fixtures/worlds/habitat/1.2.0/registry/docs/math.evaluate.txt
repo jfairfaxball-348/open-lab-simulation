@@ -1,0 +1,206 @@
+# Arithmetic evaluator (math.evaluate)
+
+## categories
+
+[
+  "math"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "exact": "3/4",
+      "value": 0.75
+    },
+    "id": "fraction",
+    "input": {
+      "expression": "1/2 + 1/4"
+    },
+    "title": "A sum of fractions"
+  },
+  {
+    "expected_output": {
+      "exact": "1024",
+      "value": 1024
+    },
+    "id": "integer-power",
+    "input": {
+      "expression": "2 ** 10"
+    },
+    "title": "An integer power"
+  },
+  {
+    "expected_output": {
+      "exact": "3/10",
+      "value": 0.3
+    },
+    "explanation": "0.1 + 0.2 is exactly 3/10; there is no floating-point error in 'exact'.",
+    "id": "exact-decimals",
+    "input": {
+      "expression": "0.1 + 0.2"
+    },
+    "title": "Decimals are exact"
+  }
+]
+
+## dependencies
+
+{
+  "executables": [
+    "python"
+  ]
+}
+
+## description
+
+Evaluates an expression built from integers, decimals, parentheses and the operators + - * / ** %. Arithmetic is exact: 'exact' is the result as an integer or a fraction string such as '3/4', and 'value' is the same result as a JSON number (rounded to a float when it is not a small integer). It is not a programming language: there are no variables, functions or imports.
+
+## failure_modes
+
+[
+  {
+    "condition": "Division or modulo by zero.",
+    "recovery": "Check the divisor before calling.",
+    "symptom": "The call returns an error of kind 'capability_error' with message 'division by zero'."
+  },
+  {
+    "condition": "The expression contains names, calls, attribute access or unsupported operators.",
+    "recovery": "Reduce the expression to numbers and the supported operators.",
+    "symptom": "The call returns an error of kind 'capability_error' whose message names the unsupported element."
+  },
+  {
+    "condition": "An exponent or result exceeds the size limits.",
+    "recovery": "Break the calculation into smaller steps or accept an approximate answer.",
+    "symptom": "The call returns an error of kind 'capability_error' with message 'exponent too large (limit 1000)' or 'result too large'."
+  }
+]
+
+## id
+
+math.evaluate
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "expression": {
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "expression"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "command": [
+    "python",
+    "-I",
+    "math_evaluate.py"
+  ],
+  "input_mode": "json_stdin",
+  "interface": "subprocess",
+  "output_mode": "json_stdout"
+}
+
+## keywords
+
+[
+  "calculator",
+  "arithmetic",
+  "compute",
+  "expression"
+]
+
+## limitations
+
+[
+  "Expressions are limited to 500 characters.",
+  "Exponents must be whole numbers no larger than 1000 in magnitude, and results are limited to about 6000 decimal digits.",
+  "A result too large for a floating-point number is reported as an error, even though it could be written exactly.",
+  "No symbolic algebra; every operand must be a number."
+]
+
+## name
+
+Arithmetic evaluator
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "exact": {
+      "type": "string"
+    },
+    "value": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "value",
+    "exact"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none",
+  "subprocess": false
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 64,
+  "timeout_s": 5,
+  "typical_duration_s": 0.2
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "fraction",
+    "integer-power",
+    "exact-decimals"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Evaluate an arithmetic expression exactly and return the result.
+
+## version
+
+0.1.0

@@ -1,0 +1,192 @@
+# Text statistics (text.stats)
+
+## categories
+
+[
+  "text"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "characters": 19,
+      "lines": 2,
+      "words": 3
+    },
+    "explanation": "The newline is a character; the last line has no trailing break but still counts.",
+    "id": "two-lines",
+    "input": {
+      "text": "hello world\ngoodbye"
+    },
+    "title": "Two short lines"
+  },
+  {
+    "expected_output": {
+      "characters": 0,
+      "lines": 0,
+      "words": 0
+    },
+    "id": "empty",
+    "input": {
+      "text": ""
+    },
+    "title": "Empty text"
+  },
+  {
+    "expected_output": {
+      "characters": 6,
+      "lines": 2,
+      "words": 2
+    },
+    "explanation": "Each \r\n is two characters but one line break.",
+    "id": "windows-line-endings",
+    "input": {
+      "text": "a\r\nb\r\n"
+    },
+    "title": "Windows line endings"
+  }
+]
+
+## description
+
+Returns exact counts for the supplied text. Words are maximal runs of non-whitespace characters. Lines are counted by line breaks (
+, 
+ or ), and a final line without a trailing break still counts. Use this instead of estimating lengths yourself.
+
+## failure_modes
+
+[
+  {
+    "condition": "The 'text' argument is missing or is not a string.",
+    "recovery": "Pass the text as a JSON string under the key 'text'.",
+    "symptom": "The call is rejected before execution with an input validation error."
+  }
+]
+
+## id
+
+text.stats
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "text": {
+      "maxLength": 1000000,
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "text_stats:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "count",
+  "length",
+  "words",
+  "lines",
+  "characters"
+]
+
+## limitations
+
+[
+  "Characters are Unicode code points, not grapheme clusters, so some emoji count as more than one.",
+  "Input longer than 1,000,000 characters is rejected."
+]
+
+## name
+
+Text statistics
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "characters": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lines": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "words": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "characters",
+    "words",
+    "lines"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 16,
+  "timeout_s": 5,
+  "typical_duration_s": 0.01
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "two-lines",
+    "empty",
+    "windows-line-endings"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Count the characters, words and lines in a piece of text.
+
+## version
+
+0.1.0
