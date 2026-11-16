@@ -1,0 +1,192 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "world.act",
+  "version": "0.1.0",
+  "name": "Act the field",
+  "summary": "Set a site's persistent local drive control.",
+  "description": "Set drive at the chosen zero-based coordinate, replacing that control until changed again. Returns the field immediately; no simulation time passes. Observe and advance to inspect consequences. The field is 6 by 6; coordinates run from 0 to 5. The complete state belongs to the supervisor and cannot be rewritten by workspace programs. Configuration must enable the phenomena service. No filesystem, network or other host permission is granted.",
+  "categories": [
+    "world",
+    "phenomena"
+  ],
+  "keywords": [
+    "field",
+    "observe",
+    "sites",
+    "water",
+    "activity",
+    "drive",
+    "act"
+  ],
+  "invocation": {
+    "interface": "mcp",
+    "server": "supervisor-world",
+    "tool": "world.act"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "x": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 5
+      },
+      "y": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 5
+      },
+      "drive": {
+        "type": "integer",
+        "minimum": -3,
+        "maximum": 3
+      }
+    },
+    "required": [
+      "x",
+      "y",
+      "drive"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "available": {
+        "type": "boolean"
+      },
+      "width": {
+        "const": 6
+      },
+      "height": {
+        "const": 6
+      },
+      "tick": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000000
+      },
+      "cells": {
+        "type": "array",
+        "minItems": 36,
+        "maxItems": 36,
+        "items": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "water": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "activity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200
+            },
+            "drive": {
+              "type": "integer",
+              "minimum": -3,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "water",
+            "activity",
+            "drive"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "available"
+    ],
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "available": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "width",
+            "height",
+            "tick",
+            "cells"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "available": {
+              "const": false
+            }
+          }
+        },
+        "then": {
+          "maxProperties": 1
+        }
+      }
+    ]
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 0
+  },
+  "demonstrations": [
+    {
+      "id": "act",
+      "title": "Try world.act",
+      "input": {
+        "x": 2,
+        "y": 2,
+        "drive": 3
+      },
+      "deterministic": false,
+      "explanation": "Runs the real supervisor-owned field when configured; changing controls or advancing has persistent effects. Builder self-tests inject an unavailable fake (available=false), never a simulated observation."
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "act"
+    ]
+  },
+  "limitations": [
+    "Requires frozen experiment phenomena configuration; disabled services are hidden from discovery.",
+    "This is an abstract, bounded simulation, not a validated model of a physical or biological system.",
+    "Private state follows complete-step checkpoints; crash recovery may roll back later effects while retaining their observations."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Service not configured, operation denied, invalid arguments or total tick bound exceeded.",
+      "symptom": "A recorded denial or error with no field change.",
+      "recovery": "Check discovered documentation and use valid, bounded controls. Only experiment configuration grants availability."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

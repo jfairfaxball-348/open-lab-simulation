@@ -1,0 +1,222 @@
+# List procedural skills (skills.list)
+
+## categories
+
+[
+  "skills",
+  "memory"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "next_offset": null,
+      "skills": [],
+      "total": 0
+    },
+    "id": "empty",
+    "input": {},
+    "title": "List an empty skill store"
+  }
+]
+
+## description
+
+Find saved procedural notes. All whitespace-separated query words must occur, case-insensitively, as substrings in id, title, summary or tags. Results are sorted by id. Page with limit and next_offset. This lists notes, not executable capabilities; use skills.get for full steps and examples.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid, linked, oversized or damaged skill data, or duplicate save without replace.",
+    "recovery": "Inspect the workspace note, repair it or explicitly replace it. Use a fresh slug for a new skill.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+skills.list
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "limit": {
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "offset": {
+      "maximum": 1000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "query": {
+      "maxLength": 200,
+      "type": "string"
+    }
+  },
+  "required": [],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "procedure",
+  "reuse",
+  "notes",
+  "skill",
+  "list"
+]
+
+## limitations
+
+[
+  "At most 1000 store entries and 100000 UTF-8 bytes per note; list pages contain at most 50 summaries.",
+  "Agent-owned workspace files can be edited directly. Invalid stored data is refused visibly; replace=true can repair a damaged note.",
+  "Procedures are not validated executable tools. No new permissions, automatic execution or cross-run sharing."
+]
+
+## name
+
+List procedural skills
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "next_offset": {
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "skills": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": false,
+            "properties": {
+              "origin": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "origin"
+            ],
+            "type": "object"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 0,
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "tags",
+          "provenance"
+        ],
+        "type": "object"
+      },
+      "maxItems": 50,
+      "type": "array"
+    },
+    "total": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "skills",
+    "total",
+    "next_offset"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_read",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 64,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "empty"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Find saved skills by keyword, with bounded pages of summaries.
+
+## version
+
+0.1.0

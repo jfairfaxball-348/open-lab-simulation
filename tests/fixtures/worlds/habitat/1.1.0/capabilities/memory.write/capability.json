@@ -1,0 +1,103 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "memory.write",
+  "version": "0.1.0",
+  "name": "Memory write",
+  "summary": "Store a named text note in this run’s durable SQLite memory.",
+  "description": "Store a named text note in this run’s durable SQLite memory. Memory is agent-owned state at .memory.sqlite in the workspace. NOTES.md is the convention for free-form working notes; it is not created automatically. Memory contains no permissions or supervisor state. Read operations return an empty list before the first write.",
+  "categories": [
+    "memory"
+  ],
+  "keywords": [
+    "notes",
+    "remember",
+    "recall",
+    "write"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "value": {
+        "type": "string",
+        "maxLength": 20000
+      }
+    },
+    "required": [
+      "key",
+      "value"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "key",
+      "revision"
+    ]
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "typical_duration_s": 0.01,
+    "ram_mb": 16
+  },
+  "demonstrations": [
+    {
+      "id": "basic",
+      "title": "Empty workspace memory example",
+      "input": {
+        "key": "idea",
+        "value": "Keep notes in NOTES.md."
+      },
+      "expected_output": {
+        "key": "idea",
+        "revision": 1
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "basic"
+    ]
+  },
+  "limitations": [
+    "Values are text, at most 20000 characters; keys are at most 128 characters.",
+    "Listing/search return at most 100 entries, ordered by key; no embeddings.",
+    "Search case folding uses SQLite lower (ASCII); the substring is literal, not a SQL pattern.",
+    "The agent may overwrite its own database with workspace tools; corruption is an error."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Database is corrupt, locked or inaccessible.",
+      "symptom": "Capability error.",
+      "recovery": "Use working notes in NOTES.md; memory may need restoring from a checkpoint."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

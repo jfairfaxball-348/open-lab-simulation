@@ -1,0 +1,196 @@
+# Edit workspace text (workspace.edit)
+
+## categories
+
+[
+  "workspace",
+  "files"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "bytes_written": 19,
+      "path": "journal.md",
+      "replacements": 0
+    },
+    "id": "journal",
+    "input": {
+      "append_text": "Started a journal.\n",
+      "path": "journal.md"
+    },
+    "title": "Append a line to a journal, creating it"
+  },
+  {
+    "deterministic": false,
+    "explanation": "Runs against your own workspace; the file and text must exist.",
+    "id": "fix",
+    "input": {
+      "new_text": "print(",
+      "old_text": "pritn(",
+      "path": "hello.py"
+    },
+    "title": "Fix a mistake in a program you wrote"
+  }
+]
+
+## description
+
+Replacement: give old_text exactly as it appears (read the file first) and new_text; it must occur once unless replace_all is true. Append: give append_text to add to the end, creating the file if needed (useful for logs and journals). The file is replaced atomically. Returns the number of replacements and the new size.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid arguments or unavailable resource.",
+    "recovery": "Check the schema, permissions and relative path.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+workspace.edit
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "append_text": {
+      "maxLength": 250000,
+      "minLength": 1,
+      "type": "string"
+    },
+    "new_text": {
+      "maxLength": 250000,
+      "type": "string"
+    },
+    "old_text": {
+      "maxLength": 250000,
+      "minLength": 1,
+      "type": "string"
+    },
+    "path": {
+      "maxLength": 240,
+      "minLength": 1,
+      "type": "string"
+    },
+    "replace_all": {
+      "default": false,
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "edit",
+  "modify",
+  "change",
+  "fix",
+  "replace",
+  "append",
+  "update",
+  "patch"
+]
+
+## limitations
+
+[
+  "UTF-8 text only; files over 5000000 bytes are refused.",
+  "Replacement is exact text matching, not regular expressions.",
+  "Forward-slash relative paths only; links and traversal are refused."
+]
+
+## name
+
+Edit workspace text
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "bytes_written": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "path": {
+      "type": "string"
+    },
+    "replacements": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "path",
+    "replacements",
+    "bytes_written"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_write",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 64,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "journal"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Change part of a workspace text file by exact replacement, or append to it.
+
+## version
+
+0.1.0

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import secrets
 import subprocess
 import sys
@@ -44,6 +45,7 @@ TMPFS_MB = 64
 STARTUP_ALLOWANCE_S = 30
 CONTROL_TIMEOUT_S = 60
 REQUIRED_CONTROLLERS = {"cpu", "memory", "pids"}
+IMAGE_ID = re.compile(r"sha256:[a-f0-9]{64}\Z")
 
 WORLD_MOUNT = "/world"
 WORKSPACE_MOUNT = "/workspace"
@@ -52,6 +54,19 @@ _HARDENED = ("nosuid", "nodev", "noexec")
 
 class ContainerUnavailable(Exception):
     """The container backend cannot be used as configured. Launch must be refused."""
+
+
+def selected_image(manifest: dict[str, Any]) -> str:
+    """Only a verified world may select the immutable local workshop image."""
+    environment = manifest["environment"]
+    if "container_image" not in environment:
+        return BASE_IMAGE
+    image = environment["container_image"]
+    if (environment["isolation"]["minimum_tier"] != "container"
+            or not isinstance(image, str) or not IMAGE_ID.fullmatch(image)
+            or not re.fullmatch(r"1\.1\.[0-9]+", str(manifest.get("schema_version")))):
+        raise ContainerUnavailable("unsupported or malformed world container image binding")
+    return image
 
 
 @dataclass(frozen=True)
@@ -78,6 +93,8 @@ class Backend:
     """Rootless Podman in one WSL 2 distribution, controlled from Windows."""
 
     def __init__(self, distro: str = DISTRO, image: str = BASE_IMAGE):
+        if image != BASE_IMAGE and (not isinstance(image, str) or not IMAGE_ID.fullmatch(image)):
+            raise ContainerUnavailable("container image must be an immutable local image ID")
         self.distro = distro
         self.image = image
         self._paths: dict[str, str] = {}
@@ -131,7 +148,13 @@ class Backend:
             ) from None
         except (ValueError, IndexError):
             raise ContainerUnavailable("podman image inspect is not in the expected form") from None
-        if described.get("Digest") != image_digest:
+        actual = described.get("Id") if IMAGE_ID.fullmatch(self.image) else described.get("Digest")
+        # Podman reports config IDs as bare hex; Docker-compatible inspectors
+        # may include the algorithm prefix. Accept only these two exact forms.
+        if IMAGE_ID.fullmatch(self.image) and re.fullmatch(r"[a-f0-9]{64}", str(actual)):
+            actual = "sha256:" + actual
+        expected = self.image if IMAGE_ID.fullmatch(self.image) else image_digest
+        if actual != expected:
             raise ContainerUnavailable("the local base image does not match its pinned digest")
         return {
             "tier": "container",
@@ -143,7 +166,7 @@ class Backend:
             "oci_runtime": runtime,
             "kernel": kernel,
             "image": self.image,
-            "image_id": described.get("Id"),
+            "image_id": actual if IMAGE_ID.fullmatch(self.image) else described.get("Id"),
         }
 
     def host_path(self, path: Path) -> str:

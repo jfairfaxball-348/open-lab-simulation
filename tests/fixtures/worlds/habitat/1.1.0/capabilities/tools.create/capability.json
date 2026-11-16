@@ -1,0 +1,229 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "tools.create",
+  "version": "0.1.0",
+  "name": "Create a sandboxed tool",
+  "summary": "Validate examples for a workspace Python program and register a reusable run-local tool.",
+  "description": "Give a workspace .py file defining run(arguments) and returning a JSON object. Module-level code and the function execute only in the container sandbox through python.run, five seconds per call. Do not print extra stdout. Examples must match exactly before registration. Source bytes are pinned: edits or deletion of the source file do not change the registered tool. Choose a new agent.<slug> id to create an improved tool. Use capabilities.search/describe/demonstrate/invoke to find and use it later. Input/output schemas support explicit single types, object properties/required/additionalProperties=false, bounded array items/minItems/maxItems <=1024, bounded strings minLength/maxLength <=16000, numeric minimum/maximum, enum <=64 and description. No references, patterns or schema compositions. Schemas: <=16000 bytes, depth <=8, <=128 nodes. Calls and example data: <=16000 JSON bytes. Source: <=32000 UTF-8 bytes. At most sixteen tools per run. Registration requires the experiment agent_created_tools flag. Both the new tool and python.run must be permitted; no other permissions can be requested. Example executions can change your workspace, even if registration fails.",
+  "categories": [
+    "code",
+    "agent-tools"
+  ],
+  "keywords": [
+    "create",
+    "tool",
+    "reuse",
+    "register",
+    "python",
+    "examples"
+  ],
+  "invocation": {
+    "interface": "mcp",
+    "server": "runtime-tools",
+    "tool": "tools.create"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^agent\\.[a-z][a-z0-9-]{0,55}$",
+        "maxLength": 62
+      },
+      "source_path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "keywords": {
+        "type": "array",
+        "maxItems": 20,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "input_schema": {
+        "type": "object"
+      },
+      "output_schema": {
+        "type": "object"
+      },
+      "examples": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 5,
+        "items": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "object"
+            },
+            "expected_output": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "input",
+            "expected_output"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "id",
+      "source_path",
+      "name",
+      "summary",
+      "description",
+      "input_schema",
+      "output_schema",
+      "examples"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "registered": {
+        "type": "boolean"
+      },
+      "source_sha256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "examples_passed": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5
+      },
+      "provenance": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "const": "agent"
+          },
+          "created_in_run": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "origin",
+          "created_in_run"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id",
+      "registered"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "resources": {
+    "timeout_s": 90,
+    "ram_mb": 512
+  },
+  "demonstrations": [
+    {
+      "id": "double",
+      "title": "Register double.py after you write def run(a): return {\"value\": a[\"value\"] * 2}",
+      "input": {
+        "id": "agent.double",
+        "source_path": "double.py",
+        "name": "Double an integer",
+        "summary": "Double an integer.",
+        "description": "Returns twice the input integer.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "examples": [
+          {
+            "input": {
+              "value": 3
+            },
+            "expected_output": {
+              "value": 6
+            }
+          }
+        ]
+      },
+      "deterministic": false,
+      "explanation": "Uses your workspace source and runs real sandbox examples. Builder self-tests inject a non-registering fake (registered=false); no code executes at build time."
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "double"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "Registered source and provenance survive checkpoints within this run only. Original workspace files are not registration authority.",
+    "Standard library only, no network, no new permissions; schemas use the documented bounded subset.",
+    "Successful examples establish only those examples. All executions remain inside the sandbox."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid schema/source, failed example, output error, timeout or duplicate id.",
+      "symptom": "A recorded error; no registration. Earlier example side effects remain.",
+      "recovery": "Fix the source or definition and retry. Use a new id to improve an accepted tool."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

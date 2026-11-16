@@ -1,0 +1,182 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "skills.save",
+  "version": "0.1.0",
+  "name": "Save procedural skills",
+  "summary": "Save or explicitly replace a reusable procedure with steps and examples.",
+  "description": "Save a named procedural note with ordered steps and examples. Existing ids require replace=true. Notes are UTF-8 JSON in .skills/<id>.json in your workspace and survive checkpoints. They are data, never executable registrations. Use skills.list to find notes and skills.get to retrieve them.",
+  "categories": [
+    "skills",
+    "memory"
+  ],
+  "keywords": [
+    "procedure",
+    "reuse",
+    "notes",
+    "skill",
+    "save"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "maxLength": 64
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      },
+      "steps": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "minItems": 1,
+        "maxItems": 50
+      },
+      "examples": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "minItems": 1,
+        "maxItems": 20
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "minItems": 0,
+        "maxItems": 20
+      },
+      "replace": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "summary",
+      "steps",
+      "examples"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "maxLength": 64
+      },
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "replaced": {
+        "type": "boolean"
+      },
+      "provenance": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "const": "agent"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id",
+      "path",
+      "replaced",
+      "provenance"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 64
+  },
+  "demonstrations": [
+    {
+      "id": "save",
+      "title": "Save a sum-check procedure",
+      "input": {
+        "id": "sum-check",
+        "title": "Check a sum",
+        "summary": "Check an arithmetic sum using Python.",
+        "steps": [
+          "Run python.run with print(sum([2, 3, 5])).",
+          "Inspect stdout and exit_code."
+        ],
+        "examples": [
+          "Input [2, 3, 5] gives 10."
+        ],
+        "tags": [
+          "arithmetic",
+          "python"
+        ]
+      },
+      "expected_output": {
+        "id": "sum-check",
+        "path": ".skills/sum-check.json",
+        "replaced": false,
+        "provenance": {
+          "origin": "agent"
+        }
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "save"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "At most 1000 store entries and 100000 UTF-8 bytes per note; list pages contain at most 50 summaries.",
+    "Agent-owned workspace files can be edited directly. Invalid stored data is refused visibly; replace=true can repair a damaged note.",
+    "Procedures are not validated executable tools. No new permissions, automatic execution or cross-run sharing."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid, linked, oversized or damaged skill data, or duplicate save without replace.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Inspect the workspace note, repair it or explicitly replace it. Use a fresh slug for a new skill."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

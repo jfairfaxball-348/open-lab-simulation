@@ -150,7 +150,7 @@ def _isolation(config: dict[str, Any], world: World) -> dict[str, Any]:
         return {"tier": "process"}
     try:
         limits = container.container_limits(config["limits"].get("resources"))
-        described = container.Backend().probe()
+        described = container.Backend(image=container.selected_image(world.manifest)).probe()
     except container.ContainerUnavailable as error:
         raise LaunchError(f"the container isolation tier is not available: {error}") from None
     return {**described, "distro": container.DISTRO, "limits": limits}

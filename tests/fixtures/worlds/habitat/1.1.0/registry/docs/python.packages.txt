@@ -1,0 +1,180 @@
+# Inspect scientific Python packages (python.packages)
+
+## categories
+
+[
+  "code",
+  "computation"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "packages": [
+        {
+          "name": "open-lab-missing-package",
+          "version": null
+        }
+      ]
+    },
+    "id": "missing-package",
+    "input": {
+      "names": [
+        "open-lab-missing-package"
+      ]
+    },
+    "title": "Unavailable distributions are reported explicitly, never installed."
+  }
+]
+
+## description
+
+Inspect installed distribution metadata without importing executable modules. Default names: numpy, scipy, sympy, mpmath, pandas, matplotlib, pillow. Optional names (at most 32) checks other distribution names; a null version means not installed. Does not install/download or grant any permission. Use python.run with help() for offline library docstrings; projects, computations, plots and raster images can be created and revised in your workspace.
+
+## failure_modes
+
+[
+  {
+    "condition": "The 'text' argument is missing or is not a string.",
+    "recovery": "Pass the text as a JSON string under the key 'text'.",
+    "symptom": "The call is rejected before execution with an input validation error."
+  }
+]
+
+## id
+
+python.packages
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "names": {
+      "items": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$",
+        "type": "string"
+      },
+      "maxItems": 32,
+      "type": "array"
+    }
+  },
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "packages",
+  "python",
+  "science",
+  "versions",
+  "numpy",
+  "sympy",
+  "pandas",
+  "matplotlib",
+  "pillow"
+]
+
+## limitations
+
+[
+  "Characters are Unicode code points, not grapheme clusters, so some emoji count as more than one.",
+  "Input longer than 1,000,000 characters is rejected."
+]
+
+## name
+
+Inspect scientific Python packages
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "packages": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "maxItems": 32,
+      "type": "array"
+    }
+  },
+  "required": [
+    "packages"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 128,
+  "timeout_s": 10
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "missing-package"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+List installed versions of the scientific workshop packages or named distributions.
+
+## version
+
+0.1.0
