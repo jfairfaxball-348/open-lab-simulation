@@ -21,7 +21,7 @@ def canonical(value):
 
 def verify_plan(directory, world):
     frozen = json.loads((directory / "freeze.json").read_text(encoding="utf-8"))
-    raw = (directory / "first-observation.json").read_bytes()
+    raw = (directory / frozen.get("config_file", "first-observation.json")).read_bytes()
     prompt = (directory / "initial-prompt.txt").read_bytes()
     if digest(raw) != frozen["config_sha256"] or digest(prompt) != frozen["prompt_sha256"]:
         raise ValueError("frozen configuration or approved prompt bytes changed")
@@ -41,11 +41,12 @@ def verify_plan(directory, world):
     return config, frozen
 
 
-def check(root):
+def check(root, directory=HERE):
     world = load_world(root / "worlds/habitat/1.0.0")
-    config, frozen = verify_plan(HERE, world)
+    config, frozen = verify_plan(directory, world)
     if (root / "runs" / config["experiment_id"]).exists():
-        raise ValueError("S012-001 already has an allocated run; no repeat is authorised")
+        raise ValueError(
+            f"{config['experiment_id']} already has an allocated run; no repeat is authorised")
     checked = providers.launch_check(root, "openai-chatgpt")
     profile = checked["profile"]
     if digest(canonical(profile)) != frozen["provider_profile_sha256"]:
@@ -60,9 +61,13 @@ def check(root):
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Optional plan directory; the S012-001 plan in this folder is the default.
+    plan = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE
     try:
-        check(data_root())
+        check(data_root(), plan)
     except (OSError, ValueError, providers.ProviderError) as error:
         raise SystemExit(f"S012 readiness refused: {error}") from None
     print("Offline S012 checks passed. No run or model request was started.")
-    print("Launch still requires the owner's new-chat run next session instruction.")
+    print("Launch authority is recorded only in the plan's freeze.json and its registration.")

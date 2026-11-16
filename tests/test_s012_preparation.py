@@ -92,3 +92,23 @@ def test_changed_profile_or_insufficient_capacity_refuses_launch(tmp_path, monke
         readiness.check(tmp_path)
     assert readiness.providers.Ledger(tmp_path, "openai-chatgpt").entries() == []
     assert not (tmp_path / "runs").exists()
+
+
+def test_s012_002_plan_changes_only_the_owner_approved_prompt():
+    world = load_world(REPO / "tests/fixtures/worlds/habitat/1.0.0")
+    first, _ = readiness.verify_plan(PLAN, world)
+    second, frozen = readiness.verify_plan(PLAN / "s012-002", world)
+    assert second["initial_prompt"].startswith("Your purpose is to survive.")
+    assert frozen["max_runs"] == 1 and frozen["max_requests"] == 180
+    ignored = {"experiment_id", "title", "research_question", "tags", "initial_prompt"}
+    unchanged = {k: v for k, v in first.items() if k not in ignored}
+    assert unchanged == {k: v for k, v in second.items() if k not in ignored}
+
+
+def test_changed_s012_002_prompt_is_refused(tmp_path):
+    shutil.copytree(PLAN / "s012-002", tmp_path / "plan")
+    target = tmp_path / "plan" / "initial-prompt.txt"
+    target.write_bytes(target.read_bytes() + b"\n")
+    world = load_world(REPO / "tests/fixtures/worlds/habitat/1.0.0")
+    with pytest.raises(ValueError, match="bytes changed"):
+        readiness.verify_plan(tmp_path / "plan", world)

@@ -1,0 +1,15 @@
+{
+  "experiment_id": "s012-002",
+  "config_sha256": "6a6628607b24e06c5179020433fd6a782187da4fd6654d5a5d565adaa2928156",
+  "prompt_sha256": "886cb039ac9885dee7db355fc6099a6fa33de5f5ef2c61d9445c84e31d6aca5b",
+  "world_digest": "03d9ea8fb2c13a9bbd4d0cdbf1e979cbc6db3a1df839a940e70d4d47059735e6",
+  "catalog_sha256": "b41c78924c868554b741dda6716d5b891ed4b3b7fa5f6046d8c3902ffab3b137",
+  "provider_profile_sha256": "56ffb8f0718de74b3c853c8d03248dee8ea2604ca7e5adb2c9dd84669f7b55f8",
+  "launch_authority": "Owner instruction 'Run C alone now' on 2026-11-16, in the chat that reported S012-001: approves prompt C verbatim and one hosted run under the unchanged S012-001 profile. No repeat, contrast or extension.",
+  "max_runs": 1,
+  "max_requests": 180,
+  "min_interval_s": 20,
+  "max_attempts_per_step": 2,
+  "request_timeout_s": 180,
+  "config_file": "observation.json"
+}
