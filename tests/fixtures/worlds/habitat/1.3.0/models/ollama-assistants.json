@@ -1,0 +1,150 @@
+{
+  "schema": "open-lab/model-provider",
+  "schema_version": "1.0.0",
+  "provider": {
+    "id": "ollama-assistants",
+    "name": "Optional local assistants",
+    "kind": "ollama",
+    "locality": "local",
+    "api": {
+      "protocol": "openai_chat_completions",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "supports_explicit_unload": true
+    },
+    "version": "0.40.16"
+  },
+  "models": [
+    {
+      "id": "granite-text",
+      "provider_ref": "granite4.1:3b",
+      "digest": "6fd349357287c7ffc9e38189a93b48ea175d24fc566b38f09cfc564fb7f303eb",
+      "family": "granite",
+      "parameter_count": "3.4B",
+      "quantization": "Q4_K_M",
+      "license": "Apache-2.0",
+      "roles": [
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 2048,
+      "features": {
+        "tool_calling": false,
+        "streaming": false
+      },
+      "footprint": {
+        "disk_mb": 2002,
+        "ram_mb": 2048,
+        "vram_mb": 3584,
+        "measured": false
+      },
+      "status": "available",
+      "notes": "Installed digest verified through read-only Ollama metadata. Service is text-only with no tools; output limits include hidden reasoning where applicable. Runtime checks actual allocation/headroom. Declared memory values are admission budgets, not peak measurements."
+    },
+    {
+      "id": "llama-text",
+      "provider_ref": "llama3.2:3b",
+      "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "family": "llama",
+      "parameter_count": "3.2B",
+      "quantization": "Q4_K_M",
+      "license": "Llama-3.2-Community",
+      "roles": [
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 2048,
+      "features": {
+        "tool_calling": false,
+        "streaming": false
+      },
+      "footprint": {
+        "disk_mb": 1926,
+        "ram_mb": 2048,
+        "vram_mb": 3584,
+        "measured": false
+      },
+      "status": "available",
+      "notes": "Installed digest verified through read-only Ollama metadata. Service is text-only with no tools; output limits include hidden reasoning where applicable. Runtime checks actual allocation/headroom. Declared memory values are admission budgets, not peak measurements."
+    },
+    {
+      "id": "qwen3-text",
+      "provider_ref": "qwen3:4b",
+      "digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "family": "qwen3",
+      "parameter_count": "4.0B",
+      "quantization": "Q4_K_M",
+      "license": "Apache-2.0",
+      "roles": [
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 2048,
+      "features": {
+        "tool_calling": false,
+        "streaming": false
+      },
+      "footprint": {
+        "disk_mb": 2382,
+        "ram_mb": 2048,
+        "vram_mb": 3584,
+        "measured": false
+      },
+      "status": "available",
+      "notes": "Installed digest verified through read-only Ollama metadata. Service is text-only with no tools; output limits include hidden reasoning where applicable. Runtime checks actual allocation/headroom. Declared memory values are admission budgets, not peak measurements."
+    },
+    {
+      "id": "qwen35-text",
+      "provider_ref": "qwen3.5:2b",
+      "digest": "0689d44085e06d165161a8a9a1731344278cfb5aade63a3c3dbdb48ab54b130a",
+      "family": "qwen35",
+      "parameter_count": "1.9B",
+      "quantization": "Q8_0",
+      "license": "Apache-2.0",
+      "roles": [
+        "text_generation"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "context_window_tokens": 2048,
+      "features": {
+        "tool_calling": false,
+        "streaming": false
+      },
+      "footprint": {
+        "disk_mb": 2559,
+        "ram_mb": 2048,
+        "vram_mb": 3584,
+        "measured": false
+      },
+      "status": "available",
+      "notes": "Installed digest verified through read-only Ollama metadata. Service is text-only with no tools; output limits include hidden reasoning where applicable. Runtime checks actual allocation/headroom. Declared memory values are admission budgets, not peak measurements."
+    }
+  ]
+}

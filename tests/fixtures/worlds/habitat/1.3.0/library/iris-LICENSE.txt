@@ -1,0 +1,4 @@
+UCI Iris dataset. Fisher, R. (1936). Iris [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C56C76
+CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+Source: https://archive.ics.uci.edu/dataset/53/iris
+Adaptation: CSV header added, trailing blank lines removed. Numerical rows unchanged.

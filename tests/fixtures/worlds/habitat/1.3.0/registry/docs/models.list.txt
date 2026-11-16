@@ -1,0 +1,202 @@
+# List optional local assistants (models.list)
+
+## categories
+
+[
+  "models"
+]
+
+## demonstrations
+
+[
+  {
+    "deterministic": false,
+    "explanation": "Builder uses a labelled fake list; Simulation returns the configured allowlist without contacting or loading a model.",
+    "id": "configured-profiles",
+    "input": {},
+    "title": "Read a frozen profile list without inference"
+  }
+]
+
+## description
+
+List the configured, permitted local text models in stable id order, with identity, licence, no-tools status and per-call limits. This is a frozen profile list, not a live host inventory or a model ranking. Listing loads nothing and consumes no inference reservation. A configured model may be refused at call time for identity/resource/server availability. Tools are optional. Use models.ask with an explicit id only if useful; no preferred model or duty to delegate.
+
+## failure_modes
+
+[
+  {
+    "condition": "Budget exhausted or permission missing.",
+    "recovery": "Continue using other available capabilities.",
+    "symptom": "Denied consultation."
+  },
+  {
+    "condition": "Server unavailable, timeout, identity mismatch or oversize output.",
+    "recovery": "Treat the missing answer as missing evidence.",
+    "symptom": "Recorded error; no substitute model."
+  }
+]
+
+## id
+
+models.list
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "type": "object"
+}
+
+## invocation
+
+{
+  "interface": "mcp",
+  "server": "supervisor-gateway",
+  "tool": "models.list"
+}
+
+## keywords
+
+[
+  "models",
+  "local",
+  "assistant",
+  "delegate",
+  "summarize",
+  "classify",
+  "review",
+  "alternative",
+  "text"
+]
+
+## limitations
+
+[
+  "Optional bounded text assistance, not an autonomous inhabitant or trusted advice.",
+  "Configured profile order is stable by id and conveys no preference or quality ranking.",
+  "Only the supplied prompt is shared. No tools, history, media inputs or host access.",
+  "Memory admission is cooperative; model servers remain outside sandbox/job hard limits.",
+  "models.ask failures, empty outputs and uncertain calls consume reservations; no retry or substitute."
+]
+
+## name
+
+List optional local assistants
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "context_tokens": {
+      "type": "integer"
+    },
+    "max_output_tokens": {
+      "type": "integer"
+    },
+    "max_prompt_utf8_bytes": {
+      "type": "integer"
+    },
+    "models": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantization": {
+            "type": "string"
+          },
+          "status": {
+            "const": "configured"
+          },
+          "tools": {
+            "const": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "digest",
+          "family",
+          "quantization",
+          "license",
+          "status",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "maxItems": 8,
+      "type": "array"
+    }
+  },
+  "required": [
+    "models",
+    "context_tokens",
+    "max_output_tokens",
+    "max_prompt_utf8_bytes"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "gpu": false,
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 128,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "configured-profiles"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Discover the frozen, permitted local text assistant profiles and limits.
+
+## version
+
+0.1.0

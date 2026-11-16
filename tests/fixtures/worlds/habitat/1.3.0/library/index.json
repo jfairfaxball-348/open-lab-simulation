@@ -1,0 +1,53 @@
+{
+  "format_version": "1.0.0",
+  "sources": [
+    {
+      "id": "iris",
+      "title": "Iris: botanical measurements (CSV)",
+      "url": "https://archive.ics.uci.edu/dataset/53/iris",
+      "revision": "UCI DOI 10.24432/C56C76; retrieved 2026-11-16",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "notice": "iris-LICENSE.txt",
+      "citation": "Fisher, R. (1936). Iris [Dataset]. UCI Machine Learning Repository. DOI:10.24432/C56C76. CSV header added; measurements unchanged.",
+      "path": "iris.csv",
+      "sha256": "b9c2c79bfac42185ece47e3c0ac4b646594eccc0cf279546dd336b626ec9e70c"
+    },
+    {
+      "id": "python-control-flow",
+      "title": "Python 3.12.10 tutorial: More Control Flow Tools",
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.12.10/Doc/tutorial/controlflow.rst",
+      "revision": "v3.12.10",
+      "license": "PSF-2.0",
+      "license_url": "https://raw.githubusercontent.com/python/cpython/v3.12.10/LICENSE",
+      "notice": "python-control-flow-LICENSE.txt",
+      "citation": "Python Software Foundation, Python 3.12.10 documentation, More Control Flow Tools.",
+      "path": "python-control-flow.txt",
+      "sha256": "1e589edc233e3654a8a64073e1cce668304453c1d64e163955df8e08dec73f66"
+    },
+    {
+      "id": "scipy-integration",
+      "title": "SciPy 1.18.1 scientific integration tutorial",
+      "url": "https://raw.githubusercontent.com/scipy/scipy/v1.18.1/doc/source/tutorial/integrate.rst",
+      "revision": "v1.18.1",
+      "license": "BSD-3-Clause",
+      "license_url": "https://raw.githubusercontent.com/scipy/scipy/v1.18.1/LICENSE.txt",
+      "notice": "scipy-integration-LICENSE.txt",
+      "citation": "SciPy developers and tutorial authors, SciPy 1.18.1 integration tutorial.",
+      "path": "scipy-integration.txt",
+      "sha256": "444cdb3a83b3d460cf8498a5ac14bc51193fe7e44ae3b76165421cb1d3fe35bb"
+    },
+    {
+      "id": "sympy-calculus",
+      "title": "SymPy 1.14.0 introductory calculus",
+      "url": "https://raw.githubusercontent.com/sympy/sympy/sympy-1.14.0/doc/src/tutorials/intro-tutorial/calculus.rst",
+      "revision": "sympy-1.14.0",
+      "license": "BSD-3-Clause",
+      "license_url": "https://raw.githubusercontent.com/sympy/sympy/sympy-1.14.0/LICENSE",
+      "notice": "sympy-calculus-LICENSE.txt",
+      "citation": "SymPy Development Team, SymPy 1.14.0 introductory tutorial, Calculus.",
+      "path": "sympy-calculus.txt",
+      "sha256": "45a80d4ed289385e3adf2ed4813b3eb250a785718122bd0178e9a81d0894621e"
+    }
+  ]
+}

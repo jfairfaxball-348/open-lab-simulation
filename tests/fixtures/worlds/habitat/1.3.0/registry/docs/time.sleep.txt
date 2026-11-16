@@ -1,0 +1,201 @@
+# Sleep until a chosen wake (time.sleep)
+
+## categories
+
+[
+  "time",
+  "runtime"
+]
+
+## demonstrations
+
+[
+  {
+    "deterministic": false,
+    "explanation": "Real supervisor time service when enabled. Builder self-tests return an explicitly unavailable fake; no clock read or wait occurs at build time.",
+    "id": "sleep",
+    "input": {
+      "seconds": 1
+    },
+    "title": "Sleep for one second"
+  }
+]
+
+## description
+
+Request a sleep for a positive integer number of seconds. Requires self-scheduled-v1; otherwise hidden/refused. The service records an active-time wake target and returns immediately. Inference stops after this complete turn and resumes on the recorded wake without an artificial message. Further calls in this turn are refused. Sleeping consumes the original budget. The request must be within configured max_sleep_s (at most 3600) and strictly shorter than remaining time; otherwise it is refused. Checkpoints preserve the target; paused downtime does not advance it. Deadlines and all resource/step limits still win.
+
+## failure_modes
+
+[
+  {
+    "condition": "Unsupported policy, denied service, invalid arguments or wake beyond remaining budget.",
+    "recovery": "Read remaining time and use a permitted bounded request. Only experiment configuration grants policy/permissions.",
+    "symptom": "A recorded denial/error without scheduling a wake."
+  }
+]
+
+## id
+
+time.sleep
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "seconds": {
+      "maximum": 3600,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "seconds"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "interface": "mcp",
+  "server": "supervisor-time",
+  "tool": "time.sleep"
+}
+
+## keywords
+
+[
+  "time",
+  "sleep",
+  "wake",
+  "wait",
+  "schedule"
+]
+
+## limitations
+
+[
+  "Does not extend deadlines, step budgets, permissions or any other limit.",
+  "Sleep uses active run time, not a wall-clock alarm across stopped runs; no external scheduler is installed.",
+  "Wake delivery is checked at bounded runtime barriers; it is not a real-time guarantee."
+]
+
+## name
+
+Sleep until a chosen wake
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "remaining_ms",
+          "elapsed_ms",
+          "budget_ms",
+          "sleeping",
+          "wake_at_elapsed_ms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "maxProperties": 1
+      }
+    }
+  ],
+  "properties": {
+    "available": {
+      "type": "boolean"
+    },
+    "budget_ms": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "elapsed_ms": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remaining_ms": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "sleeping": {
+      "const": true
+    },
+    "wake_at_elapsed_ms": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "available"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 0,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "sleep"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Choose a bounded sleep and wake without continuous inference.
+
+## version
+
+0.1.0

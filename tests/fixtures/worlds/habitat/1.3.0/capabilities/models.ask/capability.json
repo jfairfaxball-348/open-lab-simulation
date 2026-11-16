@@ -1,0 +1,114 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "models.ask",
+  "version": "0.2.0",
+  "name": "Ask an optional local assistant",
+  "summary": "Choose a configured local text model for a bounded subtask.",
+  "description": "Optionally delegate one bounded text-only subtask to an id discovered with models.list. Choose any configured model; none is preferred and consultation is never required. The supervisor checks the frozen model allowlist, permissions, exact digest, call budget, context, free memory and a single model lease. Models cannot call tools or recurse and their replies are untrusted data. No conversation history or media is shared automatically. The UTF-8 prompt byte guard plus output/framing reserves must fit configured context; models.list reports the effective limit. Output tokens include hidden reasoning where the model uses it; empty outputs are reported as failures. Calls may include cold loading, are timed/cancellable and consume one reservation even when they fail. A model server may finish cancellation/unload later; finite keep-alive bounds crash residency. The truncated flag reports a server length stop; partial text is not a completed subtask.",
+  "categories": [
+    "models"
+  ],
+  "keywords": [
+    "models",
+    "local",
+    "assistant",
+    "delegate",
+    "summarize",
+    "classify",
+    "review",
+    "alternative",
+    "text"
+  ],
+  "invocation": {
+    "interface": "mcp",
+    "server": "supervisor-gateway",
+    "tool": "models.ask"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model_id",
+      "prompt"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 6000
+      },
+      "model_id": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 80
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "text",
+      "truncated"
+    ],
+    "properties": {
+      "text": {
+        "type": "string",
+        "maxLength": 6000
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none",
+    "gpu": false
+  },
+  "resources": {
+    "timeout_s": 120,
+    "ram_mb": 128
+  },
+  "demonstrations": [
+    {
+      "id": "consult",
+      "title": "Ask for a short critique",
+      "input": {
+        "prompt": "Give one limitation of using a single example to test a claim. Reply in one sentence.",
+        "model_id": "llama-text"
+      },
+      "deterministic": false,
+      "explanation": "Actual Simulation demonstrations consume a consultation and return real model output. Builder self-tests inject a labelled fake service and check schemas only."
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "consult"
+    ]
+  },
+  "limitations": [
+    "Optional bounded text assistance, not an autonomous inhabitant or trusted advice.",
+    "Configured profile order is stable by id and conveys no preference or quality ranking.",
+    "Only the supplied prompt is shared. No tools, history, media inputs or host access.",
+    "Memory admission is cooperative; model servers remain outside sandbox/job hard limits.",
+    "models.ask failures, empty outputs and uncertain calls consume reservations; no retry or substitute."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Budget exhausted or permission missing.",
+      "symptom": "Denied consultation.",
+      "recovery": "Continue using other available capabilities."
+    },
+    {
+      "condition": "Server unavailable, timeout, identity mismatch or oversize output.",
+      "symptom": "Recorded error; no substitute model.",
+      "recovery": "Treat the missing answer as missing evidence."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

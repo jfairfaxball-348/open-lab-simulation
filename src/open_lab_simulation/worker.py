@@ -325,7 +325,7 @@ def main() -> int:
         admission=lambda: channel.denial,
         sandbox=sandbox,
         before_execute=channel.before_execute if spec.get("benchmark_fault") else None,
-        service=channel.specialist,
+        service=channel.specialist if spec.get("specialist_enabled") else None,
         agent_tools_enabled=spec.get("agent_created_tools", False),
         run_id=spec.get("run_id"), contracts=Contracts(release / "contracts"),
         registrations=spec.get("runtime_state", {}).get("agent_tools"),

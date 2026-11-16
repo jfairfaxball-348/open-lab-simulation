@@ -1,0 +1,124 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "time.remaining",
+  "version": "0.1.0",
+  "name": "Read remaining time",
+  "summary": "Read the original active wall-clock budget remaining.",
+  "description": "Read the original run wall-clock budget remaining in integer milliseconds. elapsed_ms counts active run time, including sleeping but excluding operator-paused downtime. remaining_ms excludes deadline grace and is only a snapshot: delivery and later work consume more time. This capability cannot change any limit.",
+  "categories": [
+    "time",
+    "runtime"
+  ],
+  "keywords": [
+    "time",
+    "remaining",
+    "budget",
+    "deadline",
+    "wake",
+    "sleep"
+  ],
+  "invocation": {
+    "interface": "mcp",
+    "server": "supervisor-time",
+    "tool": "time.remaining"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "available": {
+        "type": "boolean"
+      },
+      "remaining_ms": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "budget_ms": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "available"
+    ],
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "available": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "remaining_ms",
+            "elapsed_ms",
+            "budget_ms"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "available": {
+              "const": false
+            }
+          }
+        },
+        "then": {
+          "maxProperties": 1
+        }
+      }
+    ]
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 0
+  },
+  "demonstrations": [
+    {
+      "id": "remaining",
+      "input": {},
+      "deterministic": false,
+      "explanation": "Real supervisor time service when enabled. Builder self-tests return an explicitly unavailable fake; no clock read or wait occurs at build time.",
+      "title": "Read time"
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "remaining"
+    ]
+  },
+  "limitations": [
+    "Does not extend deadlines, step budgets, permissions or any other limit.",
+    "Sleep uses active run time, not a wall-clock alarm across stopped runs; no external scheduler is installed.",
+    "Wake delivery is checked at bounded runtime barriers; it is not a real-time guarantee."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Unsupported policy, denied service, invalid arguments or wake beyond remaining budget.",
+      "symptom": "A recorded denial/error without scheduling a wake.",
+      "recovery": "Read remaining time and use a permitted bounded request. Only experiment configuration grants policy/permissions."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

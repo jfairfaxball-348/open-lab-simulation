@@ -865,10 +865,15 @@ def _run_prepared(
                 payload={"action": "limit_enforced", "detail": "frozen specialist gateway",
                          "extensions": {"stage": "specialist_configuration",
                                         "policy": consultation.policy,
-                                        "model_manifest": consultation.model,
                                         "provider_manifest": consultation.provider,
-                                        "adapter": "ollama-native-lease-v1",
-                                        "context_tokens_requested": 4096,
+                                        **({"model_manifests": [m for _, m in
+                                            consultation.models.values()]}
+                                           if consultation.multi else {
+                                               "model_manifest": consultation.model}),
+                                        "adapter": "ollama-local-models-v1" if consultation.multi
+                                            else "ollama-native-lease-v1",
+                                        "context_tokens_requested": consultation.policy.get(
+                                            "context_tokens", 4096),
                                         "temperature_requested": 0,
                                         "effective_settings": "not independently attested"}})
             recorder.sync()
@@ -935,6 +940,7 @@ def _run_prepared(
                  "image": isolation["image"], "limits": isolation["limits"]}
                 if contained else {"tier": "process"}
             ),
+            "specialist_enabled": consultation is not None,
         }
         if resume:
             spec["runtime_state"] = {k: v for k, v in resume["state"].items()
@@ -1137,6 +1143,31 @@ def _run_prepared(
     return RunResult(run_id, archive, workspace, final, reason, recorder.count, notes)
 
 
+def _submit_specialist(consultation, arguments, open_calls, denied_calls, serviced,
+                       service_arguments, recorder, actor, *, stopped=False):
+    """Bind one specialist RPC to its independently recorded permitted tool call."""
+    correlations = list(open_calls)
+    correlation = correlations[0] if len(correlations) == 1 else None
+    if (stopped or consultation is None or correlation in denied_calls
+            or correlation in serviced or correlation not in service_arguments
+            or arguments != service_arguments.get(correlation)):
+        return {"status": "denied", "error": "invalid specialist admission"}
+    serviced.add(correlation)
+
+    def reserve():
+        recorder.record(
+            recorder="supervisor", type="supervisor.action", actor=actor,
+            payload={"action": "limit_enforced", "detail": "reserved specialist call",
+                     "extensions": {"stage": "specialist_call_reserved",
+                                    "correlation_id": correlation,
+                                    "prompt": arguments["prompt"],
+                                    "model_id": arguments.get("model_id",
+                                        consultation.policy.get("model_id"))}})
+        recorder.sync()
+
+    return consultation.submit(arguments, reserve)
+
+
 def _specialist_events(consultation, recorder, actor):
     while True:
         try:
@@ -1275,27 +1306,9 @@ def _supervise(
                                                   recorder, supervisor, correlation)
             return None
         if isinstance(message, dict) and "specialist" in message:
-            correlations = list(open_calls)
-            correlation = correlations[0] if len(correlations) == 1 else None
-            arguments = message["specialist"]
-            if (stopped or consultation is None or correlation in denied_calls
-                    or correlation in serviced or correlation not in service_arguments
-                    or arguments != service_arguments.get(correlation)):
-                specialist_result = {"status": "denied", "error": "invalid specialist admission"}
-                return None
-            serviced.add(correlation)
-
-            def reserve():
-                recorder.record(
-                    recorder="supervisor", type="supervisor.action", actor=supervisor,
-                    payload={"action": "limit_enforced", "detail": "reserved specialist call",
-                             "extensions": {"stage": "specialist_call_reserved",
-                                            "correlation_id": correlation,
-                                            "prompt": arguments["prompt"],
-                                            "model_id": consultation.policy["model_id"]}})
-                recorder.sync()
-
-            specialist_result = consultation.submit(arguments, reserve)
+            specialist_result = _submit_specialist(
+                consultation, message["specialist"], open_calls, denied_calls, serviced,
+                service_arguments, recorder, supervisor, stopped=stopped)
             return None
         if isinstance(message, dict) and isinstance(message.get("state"), dict):
             # After killing a busy tree its live files no longer match a queued
@@ -1471,12 +1484,12 @@ def _supervise(
                 if isinstance(arguments, dict):
                     world_arguments[event["correlation_id"]] = {"id": target,
                                                                "arguments": arguments}
-            if target == "models.ask" and consultation is not None:
+            if target in ("models.ask", "models.list") and consultation is not None:
                 args = payload.get("arguments", {})
                 if payload["capability_id"] == "capabilities.invoke":
                     service_arguments[event["correlation_id"]] = args.get("arguments")
                 elif payload["capability_id"] == "capabilities.demonstrate":
-                    manifest = consultation.world.capabilities["models.ask"][1]
+                    manifest = consultation.world.capabilities[target][1]
                     demo = next((d for d in manifest["demonstrations"]
                                  if d["id"] == args.get("demo_id", manifest[
                                      "demonstrations"][0]["id"])), None)

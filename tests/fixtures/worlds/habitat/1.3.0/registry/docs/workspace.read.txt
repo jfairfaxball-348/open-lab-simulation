@@ -1,0 +1,199 @@
+# Read workspace text (workspace.read)
+
+## categories
+
+[
+  "workspace",
+  "files"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "exists": false,
+      "path": "notes/plan.md"
+    },
+    "id": "missing",
+    "input": {
+      "path": "notes/plan.md"
+    },
+    "title": "Reading a file that does not exist yet"
+  },
+  {
+    "deterministic": false,
+    "explanation": "Runs against your own workspace, so the result depends on it.",
+    "id": "page",
+    "input": {
+      "max_lines": 20,
+      "path": "notes/plan.md",
+      "start_line": 1
+    },
+    "title": "Read lines 1-20 of a file you wrote earlier"
+  }
+]
+
+## description
+
+Returns the text of a relative workspace file with its total line count. Use start_line and max_lines to page through long files; truncated is true when more lines follow. A missing file is not an error: exists is false. Reading never changes anything.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid arguments or unavailable resource.",
+    "recovery": "Check the schema, permissions and relative path.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+workspace.read
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "max_lines": {
+      "default": 400,
+      "maximum": 2000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "path": {
+      "maxLength": 240,
+      "minLength": 1,
+      "type": "string"
+    },
+    "start_line": {
+      "default": 1,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "read",
+  "open",
+  "view",
+  "inspect",
+  "file",
+  "text",
+  "source",
+  "cat"
+]
+
+## limitations
+
+[
+  "UTF-8 text only; files over 5000000 bytes are refused.",
+  "At most 100000 characters are returned per call; page with start_line.",
+  "Forward-slash relative paths only; links and traversal are refused."
+]
+
+## name
+
+Read workspace text
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "end_line": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "exists": {
+      "type": "boolean"
+    },
+    "path": {
+      "type": "string"
+    },
+    "start_line": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "text": {
+      "type": "string"
+    },
+    "total_lines": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "truncated": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "path",
+    "exists"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_read",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 64,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "missing"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Read a UTF-8 text file from the workspace, whole or by line range.
+
+## version
+
+0.1.0

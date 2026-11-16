@@ -1,0 +1,143 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "models.list",
+  "version": "0.1.0",
+  "name": "List optional local assistants",
+  "summary": "Discover the frozen, permitted local text assistant profiles and limits.",
+  "description": "List the configured, permitted local text models in stable id order, with identity, licence, no-tools status and per-call limits. This is a frozen profile list, not a live host inventory or a model ranking. Listing loads nothing and consumes no inference reservation. A configured model may be refused at call time for identity/resource/server availability. Tools are optional. Use models.ask with an explicit id only if useful; no preferred model or duty to delegate.",
+  "categories": [
+    "models"
+  ],
+  "keywords": [
+    "models",
+    "local",
+    "assistant",
+    "delegate",
+    "summarize",
+    "classify",
+    "review",
+    "alternative",
+    "text"
+  ],
+  "invocation": {
+    "interface": "mcp",
+    "server": "supervisor-gateway",
+    "tool": "models.list"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "models",
+      "context_tokens",
+      "max_output_tokens",
+      "max_prompt_utf8_bytes"
+    ],
+    "properties": {
+      "models": {
+        "type": "array",
+        "maxItems": 8,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "name",
+            "digest",
+            "family",
+            "quantization",
+            "license",
+            "status",
+            "tools"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "quantization": {
+              "type": "string"
+            },
+            "license": {
+              "type": "string"
+            },
+            "status": {
+              "const": "configured"
+            },
+            "tools": {
+              "const": false
+            }
+          }
+        }
+      },
+      "context_tokens": {
+        "type": "integer"
+      },
+      "max_output_tokens": {
+        "type": "integer"
+      },
+      "max_prompt_utf8_bytes": {
+        "type": "integer"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none",
+    "gpu": false
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 128
+  },
+  "demonstrations": [
+    {
+      "id": "configured-profiles",
+      "title": "Read a frozen profile list without inference",
+      "input": {},
+      "deterministic": false,
+      "explanation": "Builder uses a labelled fake list; Simulation returns the configured allowlist without contacting or loading a model."
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "configured-profiles"
+    ]
+  },
+  "limitations": [
+    "Optional bounded text assistance, not an autonomous inhabitant or trusted advice.",
+    "Configured profile order is stable by id and conveys no preference or quality ranking.",
+    "Only the supplied prompt is shared. No tools, history, media inputs or host access.",
+    "Memory admission is cooperative; model servers remain outside sandbox/job hard limits.",
+    "models.ask failures, empty outputs and uncertain calls consume reservations; no retry or substitute."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Budget exhausted or permission missing.",
+      "symptom": "Denied consultation.",
+      "recovery": "Continue using other available capabilities."
+    },
+    {
+      "condition": "Server unavailable, timeout, identity mismatch or oversize output.",
+      "symptom": "Recorded error; no substitute model.",
+      "recovery": "Treat the missing answer as missing evidence."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

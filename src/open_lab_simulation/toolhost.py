@@ -146,6 +146,8 @@ class ToolHost:
         return {key: value for key, value in outcome.items() if key != "duration_ms"}
 
     def _unavailable(self, capability_id: str) -> str | None:
+        if capability_id in ("models.ask", "models.list") and self.service is None:
+            return "local model service is not configured"
         if capability_id in run_time.IDS and (self.time_service is None
                                               or capability_id == "time.sleep"
                                               and not self.scheduled):
@@ -258,8 +260,8 @@ class ToolHost:
                 return {"status": "error", "error": "agent_tool_error: cannot read tool source"}
             except (ValueError, RecursionError) as error:
                 return {"status": "error", "error": f"agent_tool_error: {error}"}
-        if invocation == {"interface": "mcp", "server": "supervisor-gateway",
-                          "tool": "models.ask"}:
+        if (capability_id in ("models.ask", "models.list") and invocation == {
+                "interface": "mcp", "server": "supervisor-gateway", "tool": capability_id}):
             if self.before_execute and self.before_execute(capability_id, arguments):
                 return json.loads(json.dumps(faults.OUTCOME))
             if self.service is None:

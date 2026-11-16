@@ -1,0 +1,251 @@
+# Act the field (world.act)
+
+## categories
+
+[
+  "world",
+  "phenomena"
+]
+
+## demonstrations
+
+[
+  {
+    "deterministic": false,
+    "explanation": "Runs the real supervisor-owned field when configured; changing controls or advancing has persistent effects. Builder self-tests inject an unavailable fake (available=false), never a simulated observation.",
+    "id": "act",
+    "input": {
+      "drive": 3,
+      "x": 2,
+      "y": 2
+    },
+    "title": "Try world.act"
+  }
+]
+
+## description
+
+Set drive at the chosen zero-based coordinate, replacing that control until changed again. Returns the field immediately; no simulation time passes. Observe and advance to inspect consequences. The field is 6 by 6; coordinates run from 0 to 5. The complete state belongs to the supervisor and cannot be rewritten by workspace programs. Configuration must enable the phenomena service. No filesystem, network or other host permission is granted.
+
+## failure_modes
+
+[
+  {
+    "condition": "Service not configured, operation denied, invalid arguments or total tick bound exceeded.",
+    "recovery": "Check discovered documentation and use valid, bounded controls. Only experiment configuration grants availability.",
+    "symptom": "A recorded denial or error with no field change."
+  }
+]
+
+## id
+
+world.act
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "drive": {
+      "maximum": 3,
+      "minimum": -3,
+      "type": "integer"
+    },
+    "x": {
+      "maximum": 5,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "y": {
+      "maximum": 5,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "x",
+    "y",
+    "drive"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "interface": "mcp",
+  "server": "supervisor-world",
+  "tool": "world.act"
+}
+
+## keywords
+
+[
+  "field",
+  "observe",
+  "sites",
+  "water",
+  "activity",
+  "drive",
+  "act"
+]
+
+## limitations
+
+[
+  "Requires frozen experiment phenomena configuration; disabled services are hidden from discovery.",
+  "This is an abstract, bounded simulation, not a validated model of a physical or biological system.",
+  "Private state follows complete-step checkpoints; crash recovery may roll back later effects while retaining their observations."
+]
+
+## name
+
+Act the field
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "width",
+          "height",
+          "tick",
+          "cells"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "available": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "maxProperties": 1
+      }
+    }
+  ],
+  "properties": {
+    "available": {
+      "type": "boolean"
+    },
+    "cells": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activity": {
+            "maximum": 200,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "drive": {
+            "maximum": 3,
+            "minimum": -3,
+            "type": "integer"
+          },
+          "water": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "y": {
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "water",
+          "activity",
+          "drive"
+        ],
+        "type": "object"
+      },
+      "maxItems": 36,
+      "minItems": 36,
+      "type": "array"
+    },
+    "height": {
+      "const": 6
+    },
+    "tick": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "width": {
+      "const": 6
+    }
+  },
+  "required": [
+    "available"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 0,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "act"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Set a site's persistent local drive control.
+
+## version
+
+0.1.0
