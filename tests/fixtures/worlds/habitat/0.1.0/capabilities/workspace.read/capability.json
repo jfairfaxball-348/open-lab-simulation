@@ -1,0 +1,140 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "workspace.read",
+  "version": "0.1.0",
+  "name": "Read workspace text",
+  "summary": "Read a UTF-8 text file from the workspace, whole or by line range.",
+  "description": "Returns the text of a relative workspace file with its total line count. Use start_line and max_lines to page through long files; truncated is true when more lines follow. A missing file is not an error: exists is false. Reading never changes anything.",
+  "categories": [
+    "workspace",
+    "files"
+  ],
+  "keywords": [
+    "read",
+    "open",
+    "view",
+    "inspect",
+    "file",
+    "text",
+    "source",
+    "cat"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "start_line": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 1
+      },
+      "max_lines": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2000,
+        "default": 400
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "path",
+      "exists"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "exists": {
+        "type": "boolean"
+      },
+      "text": {
+        "type": "string"
+      },
+      "start_line": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "end_line": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "total_lines": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_read",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 64
+  },
+  "demonstrations": [
+    {
+      "id": "missing",
+      "title": "Reading a file that does not exist yet",
+      "input": {
+        "path": "notes/plan.md"
+      },
+      "expected_output": {
+        "path": "notes/plan.md",
+        "exists": false
+      }
+    },
+    {
+      "id": "page",
+      "title": "Read lines 1-20 of a file you wrote earlier",
+      "explanation": "Runs against your own workspace, so the result depends on it.",
+      "input": {
+        "path": "notes/plan.md",
+        "start_line": 1,
+        "max_lines": 20
+      },
+      "deterministic": false
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "missing"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "UTF-8 text only; files over 5000000 bytes are refused.",
+    "At most 100000 characters are returned per call; page with start_line.",
+    "Forward-slash relative paths only; links and traversal are refused."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid arguments or unavailable resource.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Check the schema, permissions and relative path."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

@@ -1,0 +1,250 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s015-demo",
+  "title": "S015 demonstration: write, run, inspect, fix, reuse (scripted, no model)",
+  "research_question": "None. Engineering demonstration that the Habitat's read, edit and sandboxed Python capabilities work end to end on the container tier. The replies are fixed in advance, so it says nothing about how any agent behaves.",
+  "created_at": "2026-11-16T00:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check",
+    "habitat",
+    "s015"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "habitat",
+    "version": "0.1.0",
+    "content_digest": "de087f5a9caa364b599fea72ab46e55fd8cca2e938c575f93548a15706c9470e"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 20,
+    "resources": {
+      "ram_mb": 512,
+      "cpu_cores": 1,
+      "max_processes": 64,
+      "disk_mb": 64
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "text": "Looking for a way to run programs.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "run a python program"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Reading how python.run works.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "python.run"
+              }
+            }
+          ]
+        },
+        {
+          "text": "Writing a first program.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "primes.py",
+                  "text": "\"\"\"Prime numbers up to a limit.\"\"\"\n\n\ndef primes_up_to(n):\n    found = []\n    for k in range(2, n + 1):\n        if all(k % d for d in range(2, int(k ** 0.5) + 1)):\n            found.append(k)\n    return found\n\n\nif __name__ == \"__main__\":\n    print(primes_up_to(int(sys.argv[1])))\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Running it.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "path": "primes.py",
+                  "args": [
+                    "30"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "It failed; reading the program again.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "primes.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "The import is missing; fixing it.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.edit",
+                "arguments": {
+                  "path": "primes.py",
+                  "old_text": "\"\"\"Prime numbers up to a limit.\"\"\"\n",
+                  "new_text": "\"\"\"Prime numbers up to a limit.\"\"\"\nimport sys\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Running the corrected program.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "path": "primes.py",
+                  "args": [
+                    "30"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Reusing it from a second program.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "report.py",
+                  "text": "from primes import primes_up_to\n\nfound = primes_up_to(100)\nwith open(\"results/primes.txt\", \"w\", encoding=\"utf-8\") as handle:\n    handle.write(f\"{len(found)} primes up to 100; largest {found[-1]}\\n\")\nprint(len(found))\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "The report needs its folder.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "code": "import os; os.makedirs('results', exist_ok=True)"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Running the report.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "path": "report.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Reading the saved result.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "results/primes.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Keeping a note on how to reuse this.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "memory.write",
+                "arguments": {
+                  "key": "skill/primes",
+                  "value": "primes.py provides primes_up_to(n); import it from another program."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Recording progress in a journal.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.edit",
+                "arguments": {
+                  "path": "journal.md",
+                  "append_text": "Wrote primes.py, fixed a missing import, reused it in report.py.\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "text": "Finding the note again later.",
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "memory.search",
+                "arguments": {
+                  "query": "primes_up_to"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

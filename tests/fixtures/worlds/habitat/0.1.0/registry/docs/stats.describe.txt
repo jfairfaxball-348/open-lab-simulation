@@ -1,0 +1,239 @@
+# Describe numeric data (stats.describe)
+
+## categories
+
+[
+  "statistics",
+  "math"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "count": 4,
+      "mean": 2.5,
+      "median": 2.5,
+      "quantiles": {
+        "q1": 1.75,
+        "q2": 2.5,
+        "q3": 3.25
+      },
+      "stdev": 1.118033988749895,
+      "variance": 1.25
+    },
+    "id": "four-values",
+    "input": {
+      "values": [
+        4,
+        1,
+        3,
+        2
+      ]
+    },
+    "title": "Four unsorted observations"
+  },
+  {
+    "expected_output": {
+      "count": 1,
+      "mean": 7,
+      "median": 7,
+      "quantiles": {
+        "q1": 7,
+        "q2": 7,
+        "q3": 7
+      },
+      "stdev": 0,
+      "variance": 0
+    },
+    "id": "singleton",
+    "input": {
+      "values": [
+        7
+      ]
+    },
+    "title": "A single observation"
+  }
+]
+
+## description
+
+Summarize a bounded list of finite JSON numbers. Variance and standard deviation describe the supplied population (divisor n, not sample divisor n-1). Quartiles q1/q2/q3 are the 25th/50th/75th percentiles, using inclusive endpoint linear interpolation (Python statistics.quantiles inclusive). Singleton quartiles all equal the sole value. Returns rounded binary floating-point values, not exact symbolic results. No files are read or written.
+
+## failure_modes
+
+[
+  {
+    "condition": "Missing, empty, oversized, non-numeric or out-of-range data.",
+    "recovery": "Supply a bounded nonempty numeric list; do not encode expressions or missing values.",
+    "symptom": "Input validation or capability error."
+  }
+]
+
+## id
+
+stats.describe
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "values": {
+      "items": {
+        "maximum": 1000000000000.0,
+        "minimum": -1000000000000.0,
+        "type": "number"
+      },
+      "maxItems": 10000,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "values"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "statistics",
+  "data",
+  "average",
+  "mean",
+  "median",
+  "variance",
+  "deviation",
+  "quantiles",
+  "quartiles",
+  "distribution",
+  "summary"
+]
+
+## limitations
+
+[
+  "1 to 10000 finite numbers, each between -1e12 and 1e12 inclusive. Booleans and numeric strings are rejected.",
+  "Population statistics summarize only the supplied values; no confidence interval, missing-value inference or causal conclusion is computed.",
+  "Binary floating-point rounding, including underflow for extremely small variances, applies. Quartiles use the explicitly documented inclusive convention."
+]
+
+## name
+
+Describe numeric data
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "count": {
+      "maximum": 10000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "mean": {
+      "type": "number"
+    },
+    "median": {
+      "type": "number"
+    },
+    "quantiles": {
+      "additionalProperties": false,
+      "properties": {
+        "q1": {
+          "type": "number"
+        },
+        "q2": {
+          "type": "number"
+        },
+        "q3": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "q1",
+        "q2",
+        "q3"
+      ],
+      "type": "object"
+    },
+    "stdev": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "variance": {
+      "minimum": 0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "count",
+    "mean",
+    "median",
+    "variance",
+    "stdev",
+    "quantiles"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "none",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 32,
+  "timeout_s": 5,
+  "typical_duration_s": 0.02
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "four-values",
+    "singleton"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Compute count, mean, median, population variance, standard deviation and quartiles.
+
+## version
+
+0.1.0
