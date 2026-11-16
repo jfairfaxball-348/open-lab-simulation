@@ -1,0 +1,173 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "python.run",
+  "version": "0.1.0",
+  "name": "Run Python",
+  "summary": "Run your own Python program (a workspace .py file or code) in an isolated sandbox.",
+  "description": "Runs Python 3.12 with the workspace as the working directory and reports exit_code, stdout and stderr (a traceback appears in stderr). Give path to run a saved program (keep programs as files to improve and reuse them; they can import each other) or code for a quick snippet. Optional args, stdin and timeout_s (default 10, at most 60). The program may read and write workspace files. It cannot use the network, install packages or reach anything outside the workspace; only the standard library is available.",
+  "categories": [
+    "code",
+    "computation"
+  ],
+  "keywords": [
+    "python",
+    "run",
+    "execute",
+    "program",
+    "script",
+    "code",
+    "test",
+    "compute"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "code": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100000
+      },
+      "args": {
+        "type": "array",
+        "maxItems": 32,
+        "items": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "stdin": {
+        "type": "string",
+        "maxLength": 100000
+      },
+      "timeout_s": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 60,
+        "default": 10
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "ran",
+      "exit_code",
+      "timed_out",
+      "stdout",
+      "stderr",
+      "stdout_truncated",
+      "stderr_truncated"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "ran": {
+        "type": "string"
+      },
+      "exit_code": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "timed_out": {
+        "type": "boolean"
+      },
+      "stdout": {
+        "type": "string"
+      },
+      "stderr": {
+        "type": "string"
+      },
+      "stdout_truncated": {
+        "type": "boolean"
+      },
+      "stderr_truncated": {
+        "type": "boolean"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "resources": {
+    "timeout_s": 90,
+    "ram_mb": 512
+  },
+  "demonstrations": [
+    {
+      "id": "snippet",
+      "title": "Run a one-line computation",
+      "input": {
+        "code": "print(sum(range(10)))"
+      },
+      "expected_output": {
+        "ran": "<code>",
+        "exit_code": 0,
+        "timed_out": false,
+        "stdout": "45\n",
+        "stderr": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      }
+    },
+    {
+      "id": "saved",
+      "title": "Run a program you saved with workspace.write",
+      "explanation": "Runs against your own workspace; the file must exist.",
+      "input": {
+        "path": "hello.py",
+        "args": [
+          "world"
+        ]
+      },
+      "deterministic": false
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "snippet"
+    ],
+    "timeout_s": 30
+  },
+  "limitations": [
+    "Runs only in container-tier worlds with the subprocess permission; the Simulation refuses any other launch.",
+    "No network and no package installation; Python standard library only.",
+    "Wall-clock timeout at most 60 s; the whole process group is killed at the limit.",
+    "At most 64000 characters of each of stdout and stderr are returned; the rest is dropped and flagged as truncated. Output is decoded as UTF-8 and CRLF line endings become LF.",
+    "Memory, process count and CPU are bounded by the container's limits."
+  ],
+  "failure_modes": [
+    {
+      "condition": "The program raises an exception or exits non-zero.",
+      "symptom": "exit_code is not 0 and stderr holds the traceback or message.",
+      "recovery": "Read stderr, fix the program with workspace.edit and run it again."
+    },
+    {
+      "condition": "The program runs too long.",
+      "symptom": "timed_out is true and exit_code is null.",
+      "recovery": "Make it faster, process less data, or raise timeout_s up to 60."
+    },
+    {
+      "condition": "Invalid arguments or missing file.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Check the schema and that path names an existing .py file."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

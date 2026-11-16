@@ -77,6 +77,14 @@ class Channel:
             raise RuntimeError("specialist service was not acknowledged")
         return result
 
+    def world(self, ident, arguments):
+        self._out.write(json.dumps({"world": {"id": ident, "arguments": arguments}}) + "\n")
+        self._out.flush()
+        result = self.read().get("world_result")
+        if not isinstance(result, dict):
+            raise RuntimeError("world service was not acknowledged")
+        return result
+
     def end(self, reason: str, steps: int) -> None:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
         self._out.flush()
@@ -300,6 +308,7 @@ def main() -> int:
         agent_tools_enabled=spec.get("agent_created_tools", False),
         run_id=spec.get("run_id"), contracts=Contracts(release / "contracts"),
         registrations=spec.get("runtime_state", {}).get("agent_tools"),
+        world_service=channel.world if spec.get("phenomena") else None,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(

@@ -29,6 +29,7 @@ from . import (
     gateway,
     gemini,  # noqa: F401 - registers the Gemini adapter
     ollama,
+    phenomena,
     policies,
     providers,
     recovery,
@@ -92,6 +93,7 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
     """Things the contracts allow but this runtime cannot yet honour. Refuse, never pretend."""
     try:
         specialist.policy(config, world)
+        phenomena.policy(config, world)
     except ValueError as error:
         return str(error)
     if (
@@ -474,6 +476,13 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
     ):
         raise LaunchError("resuming requires the original model digest")
     metadata, state, rejected = latest_checkpoint(archive, events, world.contracts)
+    if config.get("extensions", {}).get("phenomena") is not None:
+        if "phenomena" not in state:
+            raise LaunchError("checkpoint has no private field state")
+        try:
+            phenomena.Field(config["extensions"]["phenomena"]["seed"], state["phenomena"])
+        except ValueError as error:
+            raise LaunchError(str(error)) from None
     if state.get("policy_sha256"):
         if state["policy_sha256"] != policies.digest(model["runtime_policy"]):
             raise LaunchError("checkpoint runtime policy differs")
@@ -797,7 +806,20 @@ def _run_prepared(
     controller = None
     broker = None
     consultation = None
+    field_service = None
     try:
+        if config.get("extensions", {}).get("phenomena") is not None:
+            field_service = phenomena.Service(
+                config, world, resume["state"]["phenomena"] if resume else None)
+            recorder.record(
+                recorder="supervisor", type="supervisor.action", actor=supervisor,
+                payload={"action": "limit_enforced", "detail": "supervisor-owned field root",
+                         "extensions": {"stage": "phenomena_root", "version": phenomena.VERSION,
+                                        "seed": config["extensions"]["phenomena"]["seed"],
+                                        "state_sha256": phenomena.digest(field_service.field.state),
+                                        "checkpoint_id": resume["metadata"]["checkpoint_id"]
+                                        if resume else None}})
+            recorder.sync()
         consumed = sum(
             json.loads(line)["payload"].get("extensions", {}).get("stage")
             == "specialist_call_reserved"
@@ -869,6 +891,7 @@ def _run_prepared(
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
             "agent_created_tools": capabilities.get("agent_created_tools", False),
+            "phenomena": field_service is not None,
             "run_id": run_id,
             "deny": capabilities.get("deny"),
             "model": worker_model,
@@ -880,7 +903,7 @@ def _run_prepared(
             ),
         }
         if resume:
-            spec["runtime_state"] = resume["state"]
+            spec["runtime_state"] = {k: v for k, v in resume["state"].items() if k != "phenomena"}
         process = tree.process
         if accounting:
             accounting.attach(process.pid)
@@ -890,6 +913,10 @@ def _run_prepared(
         change("running", "runtime started")
 
         def snapshot(runtime, reason):
+            # Only the supervisor supplies private world state, never a worker barrier.
+            runtime = {k: v for k, v in runtime.items() if k != "phenomena"}
+            if field_service is not None:
+                runtime["phenomena"] = field_service.field.state
             return write_checkpoint(
                 archive,
                 workspace,
@@ -939,6 +966,7 @@ def _run_prepared(
                 json.loads(line)["payload"].get("extensions", {}).get("stage") == "benchmark_fault"
                 for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))),
             consultation=consultation,
+            field_service=field_service,
             runtime_kill_in=kill_in,
         )
         if final == "terminated":
@@ -1102,6 +1130,7 @@ def _supervise(
     benchmark_fault=False,
     fault_used=False,
     consultation=None,
+    field_service=None,
     runtime_kill_in=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
@@ -1132,6 +1161,8 @@ def _supervise(
     last_denial = None
     inject_fault = False
     specialist_result = None
+    world_result = None
+    world_arguments = {}
     service_arguments = {}
     serviced = set()
 
@@ -1165,15 +1196,29 @@ def _supervise(
     def handle(line: bytes, *, stopped: bool = False) -> None:
         nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
         nonlocal idle_recorded, fault_used, inject_fault
-        nonlocal specialist_result
+        nonlocal specialist_result, world_result
         inject_fault = False
         last_seq = None
         last_denial = None
         specialist_result = None
+        world_result = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             return refuse("not JSON")
+        if isinstance(message, dict) and "world" in message:
+            correlations = list(open_calls)
+            correlation = correlations[0] if len(correlations) == 1 else None
+            request = message["world"]
+            if (stopped or field_service is None or correlation in denied_calls
+                    or correlation in serviced or correlation not in world_arguments
+                    or request != world_arguments.get(correlation)):
+                world_result = {"status": "denied", "error": "invalid world service admission"}
+                return None
+            serviced.add(correlation)
+            world_result = field_service.execute(request["id"], request["arguments"],
+                                                  recorder, supervisor, correlation)
+            return None
         if isinstance(message, dict) and "specialist" in message:
             correlations = list(open_calls)
             correlation = correlations[0] if len(correlations) == 1 else None
@@ -1333,6 +1378,20 @@ def _supervise(
                 ):
                     target = candidate
             open_calls[event["correlation_id"]] = target
+            if target in phenomena.IDS and field_service is not None:
+                args = payload.get("arguments", {})
+                arguments = args
+                if payload["capability_id"] == "capabilities.invoke":
+                    arguments = args.get("arguments")
+                elif payload["capability_id"] == "capabilities.demonstrate":
+                    manifest = field_service.world.capabilities[target][1]
+                    demo = next((d for d in manifest["demonstrations"]
+                                 if d["id"] == args.get("demo_id", manifest[
+                                     "demonstrations"][0]["id"])), None)
+                    arguments = demo["input"] if demo else None
+                if isinstance(arguments, dict):
+                    world_arguments[event["correlation_id"]] = {"id": target,
+                                                               "arguments": arguments}
             if target == "models.ask" and consultation is not None:
                 args = payload.get("arguments", {})
                 if payload["capability_id"] == "capabilities.invoke":
@@ -1349,6 +1408,7 @@ def _supervise(
                 if last_denial:
                     denied_calls.add(event["correlation_id"])
         elif kind == "tool.result":
+            world_arguments.pop(event["correlation_id"], None)
             service_arguments.pop(event["correlation_id"], None)
             # The runtime is waiting for the acknowledgement, so whatever changed
             # in the workspace since the last scan happened during this call.
@@ -1387,6 +1447,7 @@ def _supervise(
             process.stdin.write(
                 (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent,
                              "deny": last_denial, "inject_fault": inject_fault,
+                             "world_result": world_result,
                              "specialist_result": specialist_result}) + "\n").encode()
             )
             process.stdin.flush()

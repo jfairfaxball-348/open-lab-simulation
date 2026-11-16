@@ -21,7 +21,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from . import faults
+from . import faults, phenomena
 from .agent_tools import CREATE, AgentTools
 from .container import WORKSPACE_MOUNT, Backend, ContainerUnavailable, container_name
 from .paths import minimal_environment
@@ -81,6 +81,7 @@ class ToolHost:
         run_id=None,
         contracts=None,
         registrations=None,
+        world_service=None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -95,6 +96,7 @@ class ToolHost:
         self.sandbox = sandbox
         self.before_execute = before_execute
         self.service = service
+        self.world_service = world_service
         self.agent_tools = None
         if agent_tools_enabled:
             if sandbox is None or contracts is None or not run_id:
@@ -139,6 +141,10 @@ class ToolHost:
         return {key: value for key, value in outcome.items() if key != "duration_ms"}
 
     def _unavailable(self, capability_id: str) -> str | None:
+        if (capability_id in phenomena.IDS
+                and self.capabilities[capability_id][1]["invocation"] == phenomena.invocation(
+                    capability_id) and self.world_service is None):
+            return "world phenomena is not configured"
         if capability_id == "tools.create" or (self.agent_tools and
                                              capability_id in self.agent_tools.records):
             if self.agent_tools is None or self.sandbox is None:
@@ -205,6 +211,17 @@ class ToolHost:
             return {"status": "error", "error": f"invalid_input: {problem}"}
 
         invocation = manifest["invocation"]
+        if capability_id in phenomena.IDS and invocation == phenomena.invocation(capability_id):
+            if self.world_service is None:
+                return {"status": "denied", "error": "world phenomena is not configured"}
+            if self.before_execute and self.before_execute(capability_id, arguments):
+                return json.loads(json.dumps(faults.OUTCOME))
+            outcome = self.world_service(capability_id, arguments)
+            if outcome.get("status") == "ok":
+                problem = _first_error(manifest["output_schema"], outcome.get("result"))
+                if problem:
+                    return {"status": "error", "error": f"invalid_output: {problem}"}
+            return outcome
         if invocation == CREATE or (self.agent_tools and
                                     capability_id in self.agent_tools.records):
             if self.agent_tools is None or self.sandbox is None:

@@ -1,0 +1,174 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s017-demo",
+  "title": "S017 scripted field probes, intervention and checkpoint continuity",
+  "research_question": "None. Engineering demonstration of lawful persistent phenomena, not autonomy evidence.",
+  "created_at": "2026-11-16T00:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check",
+    "habitat",
+    "s017"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "habitat",
+    "version": "0.4.0",
+    "content_digest": "be37094fad7c256f9216e3feb6ffd65b16c88dd0c8812a3a555d84cd90ab8780"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 20,
+    "resources": {
+      "ram_mb": 512,
+      "cpu_cores": 1,
+      "max_processes": 64,
+      "disk_mb": 64
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "observe world field"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "world.observe"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.observe",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.act",
+                "arguments": {
+                  "x": 2,
+                  "y": 2,
+                  "drive": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.advance",
+                "arguments": {
+                  "ticks": 4
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.observe",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.act",
+                "arguments": {
+                  "x": 2,
+                  "y": 2,
+                  "drive": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.advance",
+                "arguments": {
+                  "ticks": 8
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "world.observe",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.demonstrate",
+              "arguments": {
+                "id": "world.observe"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "phenomena": {
+      "seed": 41
+    }
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 4
+  }
+}

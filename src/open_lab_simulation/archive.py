@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import policies
+from . import phenomena, policies
 from .artifacts import read_index
 from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
 from .contracts import Contracts, canonical_json, jsonl_lines, sha256_text, validate_event_stream
@@ -45,6 +45,8 @@ def verify_archive(
         return [*problems, "the event log is empty"]
 
     events = [json.loads(line) for line in lines]
+    field_problems, field_checkpoints = phenomena.replay(config, events)
+    problems += field_problems
     policy = None
     policy_pins = [e["payload"].get("extensions", {}).get("policy_sha256") for e in events
                    if e["type"] == "run.state_changed" and e["payload"].get("to") == "starting"]
@@ -133,6 +135,9 @@ def verify_archive(
                 continue
             try:
                 metadata, runtime = read_checkpoint(archive, event, events, contracts)
+                if (config.get("extensions", {}).get("phenomena") is not None
+                        and runtime.get("phenomena") != field_checkpoints.get(ident)):
+                    problems.append(f"{ident}: private field differs from replay")
                 if policy and runtime.get("policy_sha256"):
                     if runtime["policy_sha256"] != policies.digest(policy):
                         problems.append(f"{ident}: checkpoint policy differs")

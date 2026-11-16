@@ -38,7 +38,17 @@ The service is unavailable without opt-in and is never offered on the process
 tier. The scripted `experiments/habitat/s016b-demo.json` can be paused after
 step four and resumed using the commands above. Builder's
 `docs/habitat/demos/S016b.md` records the verified demonstration and limits.
-Next is S017, world phenomena. Older campaign records below are retained history.
+**S017 adds world phenomena in Habitat 0.4.0.** Set experiment extension
+`"phenomena": {"seed": 41}` to enable `world.observe/act/advance`. The supervisor
+owns the seeded field and executes only fixed laws; rule source and private
+state are outside sandbox mounts. Accepted operations are journalled before
+commit/acknowledgement. Private state joins protected checkpoints and is omitted
+from worker resume data. `ols verify` now also replays the world journal and
+checks checkpoint state; post-checkpoint crash effects may explicitly roll back.
+The scripted `experiments/habitat/s017-demo.json` can be paused after step five
+and resumed. Builder's `docs/habitat/PHENOMENA_V1.md` and `demos/S017.md` describe
+the laws, boundaries and preserved demonstration. No model inference is involved.
+Next is S018, time and continuity. Older campaign records below are retained history.
 
 S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
 `stats.describe` and `stats.regress`. Discovery, demonstration, invocation,
