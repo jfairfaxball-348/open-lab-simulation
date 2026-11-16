@@ -28,12 +28,14 @@ from . import (
     faults,
     gateway,
     gemini,  # noqa: F401 - registers the Gemini adapter
+    lineage,
     ollama,
     phenomena,
     policies,
     providers,
     recovery,
     resources,
+    run_time,
     specialist,
 )
 from .archive import verify_archive
@@ -370,6 +372,11 @@ def _prepare(
         )
     except ValueError as error:
         raise LaunchError(str(error)) from None
+    if model["runtime_policy"]["id"] == policies.SCHEDULED:
+        if (world.manifest["environment"]["isolation"]["minimum_tier"] != "container"
+                or any(world.capabilities.get(ident, (None, {}))[1].get("invocation")
+                       != run_time.invocation(ident) for ident in run_time.IDS)):
+            raise LaunchError("self-scheduled-v1 requires the container Habitat time services")
     if "settings" in model:
         model["settings"]["context_guard_tokens"] = model["runtime_policy"]["context_guard_tokens"]
     return raw, config, world, model, isolation
@@ -381,7 +388,8 @@ def _new_run_id() -> str:
 
 
 def run_experiment(
-    config_path: Path, root: Path | None = None, *, pause_after_steps: int | None = None
+    config_path: Path, root: Path | None = None, *, pause_after_steps: int | None = None,
+    from_run: Path | None = None,
 ) -> RunResult:
     """Launch one fresh run. Operator pauses require configured checkpointing."""
     root = (root or data_root()).resolve()
@@ -392,11 +400,21 @@ def run_experiment(
     archive = root / "runs" / config["experiment_id"] / run_id
     workspace = root / "workspaces" / run_id
     archive.mkdir(parents=True)
-    workspace.mkdir(parents=True)
     with run_lock(archive):
+        lineage_pin = None
+        if from_run is not None:
+            try:
+                with lineage.source(from_run, root) as source:
+                    lineage_pin = source.install(archive, workspace)
+            except (OSError, ValueError) as error:
+                raise LaunchError("lineage import refused; allocated staging retained: "
+                                  + str(error)) from None
+        else:
+            workspace.mkdir(parents=True)
         result = _run_prepared(
             raw, config, world, model, archive, workspace, isolation=isolation,
             pause_after_steps=pause_after_steps,
+            lineage_pin=lineage_pin,
         )
         return _continue_recovery(result, root, config, pause_after_steps)
 
@@ -489,6 +507,10 @@ def _resume_locked(archive, root, *, pause_after_steps=None, source="operator", 
         policies.validate_state(state.get("policy_state"), model["runtime_policy"])
     elif model["runtime_policy"]["id"] != policies.LEGACY:
         raise LaunchError("quiet policy needs checkpoint scheduling state")
+    if model["runtime_policy"]["id"] == policies.SCHEDULED:
+        if "time_state" not in state:
+            raise LaunchError("checkpoint has no private wake state")
+        run_time.Clock(config, world, model["runtime_policy"], lambda: 0, state["time_state"])
     if (
         metadata["extensions"]["world_digest"] != world.digest
         or metadata["orchestrator_model_id"] != model["model_id"]
@@ -685,6 +707,7 @@ def _interrupted_refusal(archive, detail):
 def _run_prepared(
     raw, config, world, model, archive, workspace, *, isolation, resume=None,
     pause_after_steps=None,
+    lineage_pin=None,
 ):
     run_id, experiment_id = archive.name, config["experiment_id"]
     contained = isolation["tier"] == "container"
@@ -794,9 +817,14 @@ def _run_prepared(
                 "initial_workspace": {"files": initial_entries,
                                       "sha256": policies.digest(initial_entries),
                                       "memory_present": (workspace / ".memory.sqlite").exists()},
+                **({"lineage_sha256": lineage_pin} if lineage_pin is not None else {}),
             }},
         )
         change("starting", "launch", by="experiment_manager")
+        if lineage_pin is not None:
+            # Imported files precede all child actions; do not attribute them to
+            # the first tool that merely reads the inherited workspace.
+            scanner.scan({"kind": "system"})
 
     notes: list[str] = []
     tree: ProcessTree | None = None
@@ -807,7 +835,12 @@ def _run_prepared(
     broker = None
     consultation = None
     field_service = None
+    clock = None
     try:
+        if any(ident in world.capabilities for ident in run_time.IDS):
+            clock = run_time.Clock(config, world, model["runtime_policy"],
+                                   lambda: elapsed_offset + time.monotonic() - segment_started,
+                                   resume["state"].get("time_state") if resume else None)
         if config.get("extensions", {}).get("phenomena") is not None:
             field_service = phenomena.Service(
                 config, world, resume["state"]["phenomena"] if resume else None)
@@ -892,6 +925,7 @@ def _run_prepared(
             "allow": capabilities.get("allow"),
             "agent_created_tools": capabilities.get("agent_created_tools", False),
             "phenomena": field_service is not None,
+            "time_service": clock is not None,
             "run_id": run_id,
             "deny": capabilities.get("deny"),
             "model": worker_model,
@@ -903,7 +937,8 @@ def _run_prepared(
             ),
         }
         if resume:
-            spec["runtime_state"] = {k: v for k, v in resume["state"].items() if k != "phenomena"}
+            spec["runtime_state"] = {k: v for k, v in resume["state"].items()
+                                     if k not in ("phenomena", "time_state")}
         process = tree.process
         if accounting:
             accounting.attach(process.pid)
@@ -914,9 +949,11 @@ def _run_prepared(
 
         def snapshot(runtime, reason):
             # Only the supervisor supplies private world state, never a worker barrier.
-            runtime = {k: v for k, v in runtime.items() if k != "phenomena"}
+            runtime = {k: v for k, v in runtime.items() if k not in ("phenomena", "time_state")}
             if field_service is not None:
                 runtime["phenomena"] = field_service.field.state
+            if clock is not None:
+                runtime["time_state"] = clock.snapshot()
             return write_checkpoint(
                 archive,
                 workspace,
@@ -967,6 +1004,7 @@ def _run_prepared(
                 for line in jsonl_lines((archive / "events.jsonl").read_text(encoding="utf-8")))),
             consultation=consultation,
             field_service=field_service,
+            clock=clock,
             runtime_kill_in=kill_in,
         )
         if final == "terminated":
@@ -1131,6 +1169,7 @@ def _supervise(
     fault_used=False,
     consultation=None,
     field_service=None,
+    clock=None,
     runtime_kill_in=None,
 ) -> tuple[str, str]:
     """Relay the runtime's observations into the record until it ends or is stopped."""
@@ -1163,6 +1202,8 @@ def _supervise(
     specialist_result = None
     world_result = None
     world_arguments = {}
+    time_result = None
+    time_arguments = {}
     service_arguments = {}
     serviced = set()
 
@@ -1196,16 +1237,30 @@ def _supervise(
     def handle(line: bytes, *, stopped: bool = False) -> None:
         nonlocal ended, last_seq, next_checkpoint, stop_sent, deadline_checkpointed, last_denial
         nonlocal idle_recorded, fault_used, inject_fault
-        nonlocal specialist_result, world_result
+        nonlocal specialist_result, world_result, time_result
         inject_fault = False
         last_seq = None
         last_denial = None
         specialist_result = None
         world_result = None
+        time_result = None
         try:
             message = json.loads(line.decode("utf-8"))
         except ValueError:
             return refuse("not JSON")
+        if isinstance(message, dict) and "time_service" in message:
+            correlations = list(open_calls)
+            correlation = correlations[0] if len(correlations) == 1 else None
+            request = message["time_service"]
+            if (stopped or clock is None or correlation in denied_calls
+                    or correlation in serviced or correlation not in time_arguments
+                    or request != time_arguments.get(correlation)):
+                time_result = {"status": "denied", "error": "invalid time service admission"}
+                return None
+            serviced.add(correlation)
+            time_result = clock.execute(request["id"], request["arguments"],
+                                         recorder, supervisor, correlation)
+            return None
         if isinstance(message, dict) and "world" in message:
             correlations = list(open_calls)
             correlation = correlations[0] if len(correlations) == 1 else None
@@ -1252,7 +1307,7 @@ def _supervise(
             fields = ("steps", "script_cursor", "call_count", "tokens_used")
             if (
                 (checkpointing is None and (runtime_policy is None
-                 or runtime_policy["id"] != policies.QUIET))
+                 or runtime_policy["id"] not in (policies.QUIET, policies.SCHEDULED)))
                 or open_calls
                 or not isinstance(runtime.get("messages"), list)
                 or any(not isinstance(runtime.get(k), int) or runtime[k] < 0 for k in fields)
@@ -1265,11 +1320,19 @@ def _supervise(
                     policies.validate_state(runtime.get("policy_state"), runtime_policy)
                 except ValueError as error:
                     return refuse(str(error))
-                if runtime["policy_state"]["idle"] and not idle_recorded:
+                if clock is not None:
+                    was_pending = clock.pending()
+                    clock.barrier(runtime["policy_state"], recorder, supervisor)
+                    if was_pending and not clock.pending():
+                        idle_recorded = False
+                if (runtime["policy_state"]["idle"] and not idle_recorded
+                        and not (clock and clock.state["wake_ready"])):
                     recorder.record(
                         recorder="supervisor", type="supervisor.action", actor=supervisor,
                         payload={"action": "limit_enforced", "detail": "quiet reply budget reached",
-                                 "extensions": {"stage": "runtime_idle", "wake": "none",
+                                 "extensions": {"stage": "runtime_idle",
+                                                "wake": "scheduled" if clock and clock.pending()
+                                                else "none",
                                                 "restored": restored_policy,
                                                 "policy_state": runtime["policy_state"]}},
                     )
@@ -1320,6 +1383,8 @@ def _supervise(
         if isinstance(message, dict) and isinstance(message.get("model_input"), dict):
             if stopped:
                 return None
+            if clock is not None and clock.pending():
+                return refuse("model input requested while a scheduled sleep is pending")
             payload = message["model_input"]
             body = payload.get("request")
             if (open_calls or not isinstance(body, dict)
@@ -1378,6 +1443,20 @@ def _supervise(
                 ):
                     target = candidate
             open_calls[event["correlation_id"]] = target
+            if target in run_time.IDS and clock is not None:
+                args = payload.get("arguments", {})
+                arguments = args
+                if payload["capability_id"] == "capabilities.invoke":
+                    arguments = args.get("arguments")
+                elif payload["capability_id"] == "capabilities.demonstrate":
+                    manifest = clock.world.capabilities[target][1]
+                    demo = next((d for d in manifest["demonstrations"]
+                                 if d["id"] == args.get("demo_id", manifest[
+                                     "demonstrations"][0]["id"])), None)
+                    arguments = demo["input"] if demo else None
+                if isinstance(arguments, dict):
+                    time_arguments[event["correlation_id"]] = {"id": target,
+                                                              "arguments": arguments}
             if target in phenomena.IDS and field_service is not None:
                 args = payload.get("arguments", {})
                 arguments = args
@@ -1407,7 +1486,11 @@ def _supervise(
                 last_denial = controller.admit(target)
                 if last_denial:
                     denied_calls.add(event["correlation_id"])
+            if clock is not None and clock.pending():
+                last_denial = "waiting for scheduled wake"
+                denied_calls.add(event["correlation_id"])
         elif kind == "tool.result":
+            time_arguments.pop(event["correlation_id"], None)
             world_arguments.pop(event["correlation_id"], None)
             service_arguments.pop(event["correlation_id"], None)
             # The runtime is waiting for the acknowledgement, so whatever changed
@@ -1448,6 +1531,8 @@ def _supervise(
                 (json.dumps({"ack": True, "seq": last_seq, "stop": stop_sent,
                              "deny": last_denial, "inject_fault": inject_fault,
                              "world_result": world_result,
+                             "time_result": time_result,
+                             "wake": clock.state["wake_ready"] if clock is not None else False,
                              "specialist_result": specialist_result}) + "\n").encode()
             )
             process.stdin.flush()

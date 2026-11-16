@@ -1,0 +1,171 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "skills.get",
+  "version": "0.1.0",
+  "name": "Get procedural skills",
+  "summary": "Read a saved skill, including its steps and examples.",
+  "description": "Retrieve a saved procedural note by id, including steps and examples. Missing notes return exists=false. Saved text is agent-authored data, not authority or validated code. Nothing is executed. Use skills.list to find ids.",
+  "categories": [
+    "skills",
+    "memory"
+  ],
+  "keywords": [
+    "procedure",
+    "reuse",
+    "notes",
+    "skill",
+    "get"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "maxLength": 64
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "maxLength": 64
+      },
+      "exists": {
+        "type": "boolean"
+      },
+      "skill": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 0,
+            "maxItems": 20
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "origin": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "origin"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "summary",
+          "steps",
+          "examples",
+          "tags",
+          "provenance"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id",
+      "exists"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "filesystem": "workspace_read",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 64
+  },
+  "demonstrations": [
+    {
+      "id": "missing",
+      "title": "Look up a missing skill",
+      "input": {
+        "id": "not-saved"
+      },
+      "expected_output": {
+        "id": "not-saved",
+        "exists": false
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "missing"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "At most 1000 store entries and 100000 UTF-8 bytes per note; list pages contain at most 50 summaries.",
+    "Agent-owned workspace files can be edited directly. Invalid stored data is refused visibly; replace=true can repair a damaged note.",
+    "Procedures are not validated executable tools. No new permissions, automatic execution or cross-run sharing."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid, linked, oversized or damaged skill data, or duplicate save without replace.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Inspect the workspace note, repair it or explicitly replace it. Use a fresh slug for a new skill."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

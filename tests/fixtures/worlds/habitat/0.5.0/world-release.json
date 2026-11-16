@@ -1,0 +1,479 @@
+{
+  "schema": "open-lab/world-release",
+  "schema_version": "1.0.0",
+  "world_id": "habitat",
+  "version": "0.5.0",
+  "name": "Habitat",
+  "description": "Habitat with code, skills, tools, phenomena and supervisor-owned remaining-time/self-scheduled sleep services.",
+  "created_at": "2026-11-16T11:26:24Z",
+  "status": "validated",
+  "builder": {
+    "version": "0.1.0"
+  },
+  "contracts": {
+    "world-release": "1.0.0",
+    "capability": "1.0.1",
+    "model-provider": "1.0.0",
+    "experiment-config": "1.1.0",
+    "observation-event": "1.2.0",
+    "artifact-metadata": "1.0.0",
+    "checkpoint-metadata": "1.0.1",
+    "common": "1.0.0"
+  },
+  "capabilities": [
+    {
+      "id": "math.evaluate",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/math.evaluate/capability.json",
+      "sha256": "1ac12746bfc71a5d25b9e8a21e55e6bcad6f0b8d2cf18482957e27ab7049c81d"
+    },
+    {
+      "id": "memory.list",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.list/capability.json",
+      "sha256": "7ae0579776797ac98c02b63c1781dc5e7eca232d454643ea3195dd0968461067"
+    },
+    {
+      "id": "memory.search",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.search/capability.json",
+      "sha256": "f01849eb29a65af4032a6b3d73c6501a9a672294c63d34b6fcb34ffb7285b9d3"
+    },
+    {
+      "id": "memory.write",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/memory.write/capability.json",
+      "sha256": "c4c7163f96640cca5418c1689ebe1404c482c1c93b73e33c69f3dfa8073499ff"
+    },
+    {
+      "id": "python.run",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/python.run/capability.json",
+      "sha256": "5a4a361b9797b193d6bd920b1f6c4a50fda87f22963b36d8a5a1f8b8108c9b30"
+    },
+    {
+      "id": "skills.get",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/skills.get/capability.json",
+      "sha256": "49dc21d52c02c530c069fc8a1d4c758fdb13dd9f4368f6817d0f04b6b3a1ab6d"
+    },
+    {
+      "id": "skills.list",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/skills.list/capability.json",
+      "sha256": "43055b073f8ee12d32a32ec0be15c3f96ce3804aa1254d16fcba8698b0cf2150"
+    },
+    {
+      "id": "skills.save",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/skills.save/capability.json",
+      "sha256": "cd3a711405592b49958c82679193f0208322f00c5f8e1b385bb539967e64a396"
+    },
+    {
+      "id": "stats.describe",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/stats.describe/capability.json",
+      "sha256": "9750edc45bf72cbdce186a137d99d029972abd45da71fc069469bd7730ede5e2"
+    },
+    {
+      "id": "stats.regress",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/stats.regress/capability.json",
+      "sha256": "a67d06aa776f3836911aa14605c99d64cda2c0fe3dc8f1599142afba3d814354"
+    },
+    {
+      "id": "text.stats",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/text.stats/capability.json",
+      "sha256": "447ab65350f3a917a9f6e3c54f7d084bf6f01a94b3709fa9f877c09e46bd8b8d"
+    },
+    {
+      "id": "time.now",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/time.now/capability.json",
+      "sha256": "c76019c26c20938f454f56111130a822c3962be8303fd2016d169dd2e096520c"
+    },
+    {
+      "id": "time.remaining",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/time.remaining/capability.json",
+      "sha256": "d5ab7d499e06207a9dd794c410de4594a0566dd382508df798e51ce6efc7937c"
+    },
+    {
+      "id": "time.sleep",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/time.sleep/capability.json",
+      "sha256": "28d5a459a155281b46c016cdd3dfaa332dad9d3104954c2157017dcd589181e2"
+    },
+    {
+      "id": "tools.create",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/tools.create/capability.json",
+      "sha256": "0bfa281b814e54d07dec8b3ee51edd335d0be38457747d51437770c638c82285"
+    },
+    {
+      "id": "workspace.edit",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.edit/capability.json",
+      "sha256": "d3f2bfef3228643fb74fca08c09ad4aa62cec1ad5c5e3a1729023b03809516f5"
+    },
+    {
+      "id": "workspace.list",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.list/capability.json",
+      "sha256": "caa49c66bd2ab907124950a580889b3d9dbaf7bc2bad23b43b804d5b821be78b"
+    },
+    {
+      "id": "workspace.read",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.read/capability.json",
+      "sha256": "5be7c056011d06ab9e3282a5a4ab5e51d5368d86d1e6e4ff16d8c18230e465b0"
+    },
+    {
+      "id": "workspace.write",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/workspace.write/capability.json",
+      "sha256": "31a52b8c94d7cf06daf0484c42b05d4c545de559abeaeb3aeb5769651127effb"
+    },
+    {
+      "id": "world.act",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/world.act/capability.json",
+      "sha256": "e7628291cb36259099fdb8c3818370ca3b7b8eb3573b4e3839a126d7ce5c614a"
+    },
+    {
+      "id": "world.advance",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/world.advance/capability.json",
+      "sha256": "75e3dd790c6f3fc6d0e91a3e0c097dd76a3aad4b00fd58ca090b3c957ae21f18"
+    },
+    {
+      "id": "world.observe",
+      "version": "0.1.0",
+      "manifest_path": "capabilities/world.observe/capability.json",
+      "sha256": "31edfde659384a1a7d76ec0705acc213e1137759e8b501163d7239410412f556"
+    }
+  ],
+  "model_manifests": [
+    {
+      "provider_id": "ollama-local",
+      "manifest_path": "models/ollama-local.json",
+      "sha256": "112bfb35a9c4334aa268460863333943ac63e5b40c9f7620c3183aa368540b35"
+    }
+  ],
+  "environment": {
+    "platforms": [
+      "windows",
+      "linux"
+    ],
+    "python": ">=3.12",
+    "isolation": {
+      "minimum_tier": "container"
+    },
+    "min_resources": {
+      "ram_mb": 8192,
+      "disk_mb": 10240
+    }
+  },
+  "default_limits": {
+    "wall_clock_s": 3600,
+    "ram_mb": 1024,
+    "disk_mb": 256,
+    "max_processes": 64
+  },
+  "default_permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true,
+    "gpu": false
+  },
+  "notes": "S015-S018 (ADR-0022/0024). Executable capabilities use fresh rootless containers: no network, read-only world/root and workspace-only writes. tools.create pins sandbox-validated entry source with explicit experiment opt-in. world.observe/act/advance are supervisor services with separate phenomena configuration; their rules and private state are outside sandbox mounts. No service grants host privileges. models.ask is excluded; the container image has the Python standard library only. time.remaining reports original active budget; time.sleep requires self-scheduled-v1 and never widens deadlines. New-run file/memory lineage is an operator-only Simulation action.",
+  "extensions": {
+    "files": [
+      {
+        "path": "capabilities/math.evaluate/capability.json",
+        "sha256": "1ac12746bfc71a5d25b9e8a21e55e6bcad6f0b8d2cf18482957e27ab7049c81d"
+      },
+      {
+        "path": "capabilities/math.evaluate/math_evaluate.py",
+        "sha256": "ba9fd2f5c8d615948c0eb411b592b0f9521989ceb074cf8a07439b42f4676df1"
+      },
+      {
+        "path": "capabilities/memory.list/capability.json",
+        "sha256": "7ae0579776797ac98c02b63c1781dc5e7eca232d454643ea3195dd0968461067"
+      },
+      {
+        "path": "capabilities/memory.list/implementation.py",
+        "sha256": "9d3ccbee4026d6a24d0418ff338065e763dc2d5a35f384097ab84adb05035392"
+      },
+      {
+        "path": "capabilities/memory.search/capability.json",
+        "sha256": "f01849eb29a65af4032a6b3d73c6501a9a672294c63d34b6fcb34ffb7285b9d3"
+      },
+      {
+        "path": "capabilities/memory.search/implementation.py",
+        "sha256": "1ac94e8f452b011ba516a82f3254288d8179f4a1ee53946cea7fd8fde554551c"
+      },
+      {
+        "path": "capabilities/memory.write/capability.json",
+        "sha256": "c4c7163f96640cca5418c1689ebe1404c482c1c93b73e33c69f3dfa8073499ff"
+      },
+      {
+        "path": "capabilities/memory.write/implementation.py",
+        "sha256": "2ebf722d915e2cdba94d77af0cafe08c56ce6545b6f44be8ac86fe5cbc8b3547"
+      },
+      {
+        "path": "capabilities/python.run/capability.json",
+        "sha256": "5a4a361b9797b193d6bd920b1f6c4a50fda87f22963b36d8a5a1f8b8108c9b30"
+      },
+      {
+        "path": "capabilities/python.run/implementation.py",
+        "sha256": "2cddfb744f4713082c15bbb67de6e28c1005a008e0006599852b53bcd220eb2c"
+      },
+      {
+        "path": "capabilities/skills.get/capability.json",
+        "sha256": "49dc21d52c02c530c069fc8a1d4c758fdb13dd9f4368f6817d0f04b6b3a1ab6d"
+      },
+      {
+        "path": "capabilities/skills.get/implementation.py",
+        "sha256": "f0a35d0d731be03041e53e28daaab71c7e8240ddf8af07bc00992e88d7869c85"
+      },
+      {
+        "path": "capabilities/skills.list/capability.json",
+        "sha256": "43055b073f8ee12d32a32ec0be15c3f96ce3804aa1254d16fcba8698b0cf2150"
+      },
+      {
+        "path": "capabilities/skills.list/implementation.py",
+        "sha256": "8aa79b8cfc490b112a5e32dca9fc7b330b3c758f52bf9cbffba4cc64ab77025d"
+      },
+      {
+        "path": "capabilities/skills.save/capability.json",
+        "sha256": "cd3a711405592b49958c82679193f0208322f00c5f8e1b385bb539967e64a396"
+      },
+      {
+        "path": "capabilities/skills.save/implementation.py",
+        "sha256": "923116ed61cb0489c8b5e206093767880ce2e2ced4f2a79d676c41f822c39f36"
+      },
+      {
+        "path": "capabilities/stats.describe/capability.json",
+        "sha256": "9750edc45bf72cbdce186a137d99d029972abd45da71fc069469bd7730ede5e2"
+      },
+      {
+        "path": "capabilities/stats.describe/implementation.py",
+        "sha256": "883c307034bbeda19b9c8d7ff8d870bcd8fb88578d1c57e9a158c8e32d1d3e45"
+      },
+      {
+        "path": "capabilities/stats.regress/capability.json",
+        "sha256": "a67d06aa776f3836911aa14605c99d64cda2c0fe3dc8f1599142afba3d814354"
+      },
+      {
+        "path": "capabilities/stats.regress/implementation.py",
+        "sha256": "762ee88270d54df2d9955ceeb088f6b298aeeb0a18e1008497ac4ccb75fbd261"
+      },
+      {
+        "path": "capabilities/text.stats/capability.json",
+        "sha256": "447ab65350f3a917a9f6e3c54f7d084bf6f01a94b3709fa9f877c09e46bd8b8d"
+      },
+      {
+        "path": "capabilities/text.stats/text_stats.py",
+        "sha256": "780f8bb0a2beb5e9e761e4237bd61ca53642e5dcbd2b916510054bdc874fbc90"
+      },
+      {
+        "path": "capabilities/time.now/capability.json",
+        "sha256": "c76019c26c20938f454f56111130a822c3962be8303fd2016d169dd2e096520c"
+      },
+      {
+        "path": "capabilities/time.now/implementation.py",
+        "sha256": "d52f466e51c7e49ada44699eddc53b6de26e63404928b8531effeabd3fd1992d"
+      },
+      {
+        "path": "capabilities/time.remaining/capability.json",
+        "sha256": "d5ab7d499e06207a9dd794c410de4594a0566dd382508df798e51ce6efc7937c"
+      },
+      {
+        "path": "capabilities/time.sleep/capability.json",
+        "sha256": "28d5a459a155281b46c016cdd3dfaa332dad9d3104954c2157017dcd589181e2"
+      },
+      {
+        "path": "capabilities/tools.create/capability.json",
+        "sha256": "0bfa281b814e54d07dec8b3ee51edd335d0be38457747d51437770c638c82285"
+      },
+      {
+        "path": "capabilities/workspace.edit/capability.json",
+        "sha256": "d3f2bfef3228643fb74fca08c09ad4aa62cec1ad5c5e3a1729023b03809516f5"
+      },
+      {
+        "path": "capabilities/workspace.edit/implementation.py",
+        "sha256": "b1221bdaaa0a910989ef3a7115521f908d3ba071ad8ad7ea57a280548bd1c895"
+      },
+      {
+        "path": "capabilities/workspace.list/capability.json",
+        "sha256": "caa49c66bd2ab907124950a580889b3d9dbaf7bc2bad23b43b804d5b821be78b"
+      },
+      {
+        "path": "capabilities/workspace.list/implementation.py",
+        "sha256": "7eadc7fc3e20a795b221ccfee2bea1dce43834bb02efa16783260dc9a4a8e942"
+      },
+      {
+        "path": "capabilities/workspace.read/capability.json",
+        "sha256": "5be7c056011d06ab9e3282a5a4ab5e51d5368d86d1e6e4ff16d8c18230e465b0"
+      },
+      {
+        "path": "capabilities/workspace.read/implementation.py",
+        "sha256": "cc4138058811f24fd06282204354bec3faaf049b353f498ebac75a8f030d316b"
+      },
+      {
+        "path": "capabilities/workspace.write/capability.json",
+        "sha256": "31a52b8c94d7cf06daf0484c42b05d4c545de559abeaeb3aeb5769651127effb"
+      },
+      {
+        "path": "capabilities/workspace.write/implementation.py",
+        "sha256": "273a04abce10125ba12b4bb0d2e596cc4368e17753d28cef9e9db83d75459991"
+      },
+      {
+        "path": "capabilities/world.act/capability.json",
+        "sha256": "e7628291cb36259099fdb8c3818370ca3b7b8eb3573b4e3839a126d7ce5c614a"
+      },
+      {
+        "path": "capabilities/world.advance/capability.json",
+        "sha256": "75e3dd790c6f3fc6d0e91a3e0c097dd76a3aad4b00fd58ca090b3c957ae21f18"
+      },
+      {
+        "path": "capabilities/world.observe/capability.json",
+        "sha256": "31edfde659384a1a7d76ec0705acc213e1137759e8b501163d7239410412f556"
+      },
+      {
+        "path": "contracts/v1/artifact-metadata.schema.json",
+        "sha256": "cff5032066b27029441b18e477e1939c3a49b1cdcb4d8e962d524583c4eede7d"
+      },
+      {
+        "path": "contracts/v1/capability.schema.json",
+        "sha256": "2c58a7b5e03af41225a5f8d184a016ba9d7301ce9d64874af244816f23905df3"
+      },
+      {
+        "path": "contracts/v1/checkpoint-metadata.schema.json",
+        "sha256": "82fa3cc03b9f9f5e26809724d28eb966dd340bb36e52ac4fe510aa14d915f9ea"
+      },
+      {
+        "path": "contracts/v1/common.schema.json",
+        "sha256": "e9728f8503247703a4624800c5c446a80e3d2bf3c2bb0dc0431207821b9430d7"
+      },
+      {
+        "path": "contracts/v1/experiment-config.schema.json",
+        "sha256": "c4105a599343f15bea9d7caa4748625f9c2875b48b549586299502899fe99a7e"
+      },
+      {
+        "path": "contracts/v1/model-provider.schema.json",
+        "sha256": "dac256979487a5586b8425bf316a7373062bd79fc2eba02587464c9e29fcfd6a"
+      },
+      {
+        "path": "contracts/v1/observation-event.schema.json",
+        "sha256": "f28f774e3e7615e1e97e74088792adab99386a73eb0cbf68f53b468dffe9fc63"
+      },
+      {
+        "path": "contracts/v1/world-release.schema.json",
+        "sha256": "147f7f8221f836b742fbb3508b58fabac1ebb2a8bf68d8b9c683ea7f9459940d"
+      },
+      {
+        "path": "models/ollama-local.json",
+        "sha256": "112bfb35a9c4334aa268460863333943ac63e5b40c9f7620c3183aa368540b35"
+      },
+      {
+        "path": "registry/docs/math.evaluate.txt",
+        "sha256": "22bf4503acd8b8a22a6989a3f7a95ebf9d61705bd39b2d22f806ce88541792e4"
+      },
+      {
+        "path": "registry/docs/memory.list.txt",
+        "sha256": "e8f202f3a3bc9f76aa593212256de3e305b943115476cf1eea7ae19bc9c18674"
+      },
+      {
+        "path": "registry/docs/memory.search.txt",
+        "sha256": "88bec33b14921c8810ed69ae4edcc3e42cdac5e7b0e21295bdfe6d4a3cce0ece"
+      },
+      {
+        "path": "registry/docs/memory.write.txt",
+        "sha256": "9fe526d0a916c859b7e00c4f3f316aa6c024c9e1f1f54c575b6f2743c701db02"
+      },
+      {
+        "path": "registry/docs/python.run.txt",
+        "sha256": "74dbebf9b3b0bb04bb5828fdf75a11ecb88f041e3e2be7dea6719471a0a790dd"
+      },
+      {
+        "path": "registry/docs/skills.get.txt",
+        "sha256": "1ecfeb053725f9048e3a18b965727cfef6607091d57693777fd9f95c33704a01"
+      },
+      {
+        "path": "registry/docs/skills.list.txt",
+        "sha256": "ed28f5013143947a3537b057e1aa3253ac87164cea7b16d96b4390065967e3b8"
+      },
+      {
+        "path": "registry/docs/skills.save.txt",
+        "sha256": "7f89a134684f754d531a8c1433575888428a41dc0f106b6d487c785d3d95b61a"
+      },
+      {
+        "path": "registry/docs/stats.describe.txt",
+        "sha256": "814a19a2c28cbe8744fdd3bd9b10a6f255048aa92b2d897cdb73bbc698683834"
+      },
+      {
+        "path": "registry/docs/stats.regress.txt",
+        "sha256": "cd58a6a17c67d92c46cda95103fa2181b52a9800829bd191ea1611fc5cf0da87"
+      },
+      {
+        "path": "registry/docs/text.stats.txt",
+        "sha256": "cde3c9fb117ff99dc808a0d19e4560ea0f39541e7db437076b3355c54b5484b2"
+      },
+      {
+        "path": "registry/docs/time.now.txt",
+        "sha256": "af5a159bf43554e4e6acd43a8d0086b8a52506479aaaf2e5485b96f7c44e0697"
+      },
+      {
+        "path": "registry/docs/time.remaining.txt",
+        "sha256": "e8b3b0ee2899a7c8f857d426073b28bd8334417402cd82f6fa0eb8d478725b3b"
+      },
+      {
+        "path": "registry/docs/time.sleep.txt",
+        "sha256": "829dcd8db8d663c9203f0edbde32aa956578cd0536eda849ea2a98751e450400"
+      },
+      {
+        "path": "registry/docs/tools.create.txt",
+        "sha256": "f7b73587697bc6799253dba1649656b9ca6a4da92c16a5c8e885d5ee36d2c5ea"
+      },
+      {
+        "path": "registry/docs/workspace.edit.txt",
+        "sha256": "b2e23d0596bc48a37f24a47b67d569327a327db08e82ea6df4eac5e5a6b5c4e7"
+      },
+      {
+        "path": "registry/docs/workspace.list.txt",
+        "sha256": "05de9b4f6cee8f5d5ee130511496cba07ddcbba80342a2b5a4b973eaecfc30e1"
+      },
+      {
+        "path": "registry/docs/workspace.read.txt",
+        "sha256": "2794cd68379df761faa7b64e0538cfda866fbc72e0aead610a023a4ff9807a1b"
+      },
+      {
+        "path": "registry/docs/workspace.write.txt",
+        "sha256": "222e9ed6b372d645222f9c50060419bbe68cf9a9766cb1753e1d3976dc8eb8a2"
+      },
+      {
+        "path": "registry/docs/world.act.txt",
+        "sha256": "0c271a9b383a1c844419e7fdc56f3a24f9fe3031d4212e063312c1fcfcbff9b0"
+      },
+      {
+        "path": "registry/docs/world.advance.txt",
+        "sha256": "dc1ce65855091b7db838c8cc5e0a4d7972ae4e601ec9651fe9afee2b3f010d1b"
+      },
+      {
+        "path": "registry/docs/world.observe.txt",
+        "sha256": "07941b705ca2631c47d7dc70a8a2e18d4d79b687a42afeae33d1251bbd62198d"
+      },
+      {
+        "path": "registry/index.json",
+        "sha256": "71e74602ee2fe3367fd1a7bcaea337f9e93ccd671828e72f2b9420dc6fd13f09"
+      }
+    ]
+  },
+  "content_digest": {
+    "algorithm": "sha256",
+    "value": "3a076c9c8ce2812d0d3fd4d5435faf723a1130a0bc7b64be3cfef6954e6f2639"
+  }
+}

@@ -37,6 +37,7 @@ class Channel:
         os.dup2(2, 1)
         self._in = sys.stdin.buffer
         self.denial = None
+        self.woke = False
 
     def read(self) -> dict[str, Any]:
         line = self._in.readline()
@@ -85,6 +86,18 @@ class Channel:
             raise RuntimeError("world service was not acknowledged")
         return result
 
+    def time_service(self, ident, arguments):
+        self._out.write(json.dumps({"time_service": {"id": ident, "arguments": arguments}}) + "\n")
+        self._out.flush()
+        result = self.read().get("time_result")
+        if not isinstance(result, dict):
+            raise RuntimeError("time service was not acknowledged")
+        return result
+
+    def consume_wake(self):
+        woke, self.woke = self.woke, False
+        return woke
+
     def end(self, reason: str, steps: int) -> None:
         self._out.write(json.dumps({"end": {"reason": reason, "steps": steps}}) + "\n")
         self._out.flush()
@@ -92,7 +105,9 @@ class Channel:
     def state(self, state: dict, final: bool = False) -> bool:
         self._out.write(json.dumps({"state": state, "final": final}) + "\n")
         self._out.flush()
-        return bool(self.read().get("stop"))
+        result = self.read()
+        self.woke = bool(result.get("wake"))
+        return bool(result.get("stop"))
 
     def reserve_step(self):
         self._out.write(json.dumps({"step_start": True}) + "\n")
@@ -113,6 +128,7 @@ def run_loop(
     reserve_step=None,
     policy=None,
     record_input=None,
+    wake_status=None,
 ) -> tuple[str, int]:
     """The agent loop. Returns why it ended and how many steps it took.
 
@@ -143,7 +159,7 @@ def run_loop(
         scheduling = {"tool_free_replies": 0, "idle": False}
 
     def save(final=False):
-        return checkpoint and checkpoint(
+        stop = checkpoint and checkpoint(
             {
                 "messages": messages,
                 "steps": steps,
@@ -156,6 +172,10 @@ def run_loop(
             },
             final,
         )
+        if policy["id"] == policies.SCHEDULED and wake_status and wake_status():
+            scheduling.update(tool_free_replies=0, idle=False)
+            host.sleep_requested = False
+        return stop
 
     if save():
         return "operator_pause", steps
@@ -238,8 +258,9 @@ def run_loop(
         scheduling["tool_free_replies"] = (
             0 if reply.tool_calls else scheduling["tool_free_replies"] + 1
         )
-        scheduling["idle"] = (policy["id"] == policies.QUIET and
-                              scheduling["tool_free_replies"] >= policy["max_tool_free_replies"])
+        scheduling["idle"] = (policy["id"] in (policies.QUIET, policies.SCHEDULED) and
+                              (scheduling["tool_free_replies"] >= policy["max_tool_free_replies"]
+                               or host.sleep_requested))
         if not reply.tool_calls and not scheduling["idle"]:
             payload: dict[str, Any] = {"kind": "continuation", "text": continuation}
             if output_seq is not None:
@@ -309,6 +330,8 @@ def main() -> int:
         run_id=spec.get("run_id"), contracts=Contracts(release / "contracts"),
         registrations=spec.get("runtime_state", {}).get("agent_tools"),
         world_service=channel.world if spec.get("phenomena") else None,
+        time_service=channel.time_service if spec.get("time_service") else None,
+        scheduled=chosen["runtime_policy"]["id"] == policies.SCHEDULED,
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(
@@ -321,9 +344,11 @@ def main() -> int:
         spec["continuation_message"],
         runtime_state=spec.get("runtime_state"),
         checkpoint=(channel.state if spec.get("checkpointing") is not None
-                    or chosen["runtime_policy"]["id"] == policies.QUIET else None),
+                    or chosen["runtime_policy"]["id"] in (policies.QUIET, policies.SCHEDULED)
+                    else None),
         reserve_step=channel.reserve_step if spec.get("reserve_steps") else None,
         policy=chosen["runtime_policy"], record_input=channel.model_input,
+        wake_status=channel.consume_wake,
     )
     channel.end(reason, steps)
     return 0

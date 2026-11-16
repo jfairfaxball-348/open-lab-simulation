@@ -1,0 +1,175 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "stats.regress",
+  "version": "0.1.0",
+  "name": "Fit a straight line",
+  "summary": "Fit y = slope*x + intercept by ordinary least squares and report Pearson r.",
+  "description": "Fit a line with an intercept to paired finite numeric lists x and y of equal length. Return count, slope, intercept and Pearson correlation r. Constant x is rejected because the line is not identifiable. For constant y and nonconstant x, return slope 0, intercept equal to that constant and r null (undefined correlation). Duplicate x values are allowed if x is not entirely constant. The computation normalizes numeric scales before using standard-library regression and correlation, then transforms the line back. Outputs are rounded floating-point values. No code, files or expressions are accepted.",
+  "categories": [
+    "statistics",
+    "math"
+  ],
+  "keywords": [
+    "statistics",
+    "data",
+    "regression",
+    "least",
+    "squares",
+    "line",
+    "fit",
+    "slope",
+    "intercept",
+    "correlation",
+    "paired",
+    "trend"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "x",
+      "y"
+    ],
+    "properties": {
+      "x": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 10000,
+        "items": {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0
+        }
+      },
+      "y": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 10000,
+        "items": {
+          "type": "number",
+          "minimum": -1000000000000.0,
+          "maximum": 1000000000000.0
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "count",
+      "slope",
+      "intercept",
+      "r"
+    ],
+    "properties": {
+      "count": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 10000
+      },
+      "slope": {
+        "type": "number"
+      },
+      "intercept": {
+        "type": "number"
+      },
+      "r": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": -1,
+        "maximum": 1
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "typical_duration_s": 0.02,
+    "ram_mb": 32
+  },
+  "demonstrations": [
+    {
+      "id": "straight-line",
+      "title": "An exact straight-line relationship",
+      "input": {
+        "x": [
+          0,
+          1,
+          2
+        ],
+        "y": [
+          1,
+          3,
+          5
+        ]
+      },
+      "expected_output": {
+        "count": 3,
+        "slope": 2,
+        "intercept": 1,
+        "r": 1
+      }
+    },
+    {
+      "id": "constant-y",
+      "title": "Constant response has undefined correlation",
+      "input": {
+        "x": [
+          1,
+          2,
+          3
+        ],
+        "y": [
+          7,
+          7,
+          7
+        ]
+      },
+      "expected_output": {
+        "count": 3,
+        "slope": 0,
+        "intercept": 7,
+        "r": null
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "straight-line",
+      "constant-y"
+    ]
+  },
+  "limitations": [
+    "2 to 10000 finite numbers per list, equal lengths, each number between -1e12 and 1e12 inclusive. Booleans, numeric strings and expressions are rejected.",
+    "Constant x is not identifiable and is rejected; constant y has r null. No missing-value filtering is performed.",
+    "Outputs use binary floating point; results outside finite floating-point range are rejected, and rounding or underflow may affect extreme scales.",
+    "This is a descriptive OLS fit with an intercept, not a causal finding, uncertainty estimate or significance test."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid lists, unequal lengths or constant x.",
+      "symptom": "Input validation or capability error.",
+      "recovery": "Supply bounded paired observations with at least two distinct x values."
+    },
+    {
+      "condition": "The fitted result exceeds finite floating-point range.",
+      "symptom": "Capability error; no infinite result is returned.",
+      "recovery": "Rescale the numeric observations and state the units used."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

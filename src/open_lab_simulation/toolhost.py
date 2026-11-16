@@ -21,7 +21,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from . import faults, phenomena
+from . import faults, phenomena, run_time
 from .agent_tools import CREATE, AgentTools
 from .container import WORKSPACE_MOUNT, Backend, ContainerUnavailable, container_name
 from .paths import minimal_environment
@@ -82,6 +82,8 @@ class ToolHost:
         contracts=None,
         registrations=None,
         world_service=None,
+        time_service=None,
+        scheduled=False,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -97,6 +99,8 @@ class ToolHost:
         self.before_execute = before_execute
         self.service = service
         self.world_service = world_service
+        self.time_service, self.scheduled = time_service, scheduled
+        self.sleep_requested = False
         self.agent_tools = None
         if agent_tools_enabled:
             if sandbox is None or contracts is None or not run_id:
@@ -129,7 +133,8 @@ class ToolHost:
         })
 
         started = time.monotonic()
-        denied = self.admission() if self.admission is not None else None
+        denied = ("waiting for scheduled wake" if self.sleep_requested else
+                  self.admission() if self.admission is not None else None)
         outcome = ({"status": "denied", "error": denied} if denied else
                    self._discovery(capability_id, arguments) if self.registry is not None
                    else self._run(capability_id, arguments))
@@ -141,6 +146,10 @@ class ToolHost:
         return {key: value for key, value in outcome.items() if key != "duration_ms"}
 
     def _unavailable(self, capability_id: str) -> str | None:
+        if capability_id in run_time.IDS and (self.time_service is None
+                                              or capability_id == "time.sleep"
+                                              and not self.scheduled):
+            return "time service is not enabled by this runtime policy"
         if (capability_id in phenomena.IDS
                 and self.capabilities[capability_id][1]["invocation"] == phenomena.invocation(
                     capability_id) and self.world_service is None):
@@ -211,6 +220,19 @@ class ToolHost:
             return {"status": "error", "error": f"invalid_input: {problem}"}
 
         invocation = manifest["invocation"]
+        if capability_id in run_time.IDS and invocation == run_time.invocation(capability_id):
+            if self.time_service is None:
+                return {"status": "denied", "error": "time service unavailable"}
+            if self.before_execute and self.before_execute(capability_id, arguments):
+                return json.loads(json.dumps(faults.OUTCOME))
+            outcome = self.time_service(capability_id, arguments)
+            if outcome.get("status") == "ok":
+                problem = _first_error(manifest["output_schema"], outcome.get("result"))
+                if problem:
+                    return {"status": "error", "error": f"invalid_output: {problem}"}
+                if capability_id == "time.sleep":
+                    self.sleep_requested = True
+            return outcome
         if capability_id in phenomena.IDS and invocation == phenomena.invocation(capability_id):
             if self.world_service is None:
                 return {"status": "denied", "error": "world phenomena is not configured"}

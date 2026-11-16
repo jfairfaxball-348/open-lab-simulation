@@ -20,10 +20,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.data_root) if args.data_root else data_root()
     try:
         result = run_experiment(
-            Path(args.experiment), root, pause_after_steps=args.pause_after_steps
+            Path(args.experiment), root, pause_after_steps=args.pause_after_steps,
+            from_run=Path(args.from_run) if args.from_run else None,
         )
     except LaunchError as error:
-        print(f"Run refused; nothing was created. {error}", file=sys.stderr)
+        prefix = "Run refused." if args.from_run else "Run refused; nothing was created."
+        print(f"{prefix} {error}", file=sys.stderr)
         return 2
     return _print_result(result)
 
@@ -193,6 +195,8 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser("run", help="Launch one run of an experiment and supervise it.")
     run.add_argument("experiment", help="Experiment configuration file (.json).")
     run.add_argument("--data-root", help="Data root. Default: $OPEN_LAB_DATA or ~/open-lab-data.")
+    run.add_argument("--from-run",
+                     help="Seed files and memory from a completed run's final snapshot.")
     run.add_argument(
         "--pause-after-steps",
         type=int,

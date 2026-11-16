@@ -48,7 +48,29 @@ checks checkpoint state; post-checkpoint crash effects may explicitly roll back.
 The scripted `experiments/habitat/s017-demo.json` can be paused after step five
 and resumed. Builder's `docs/habitat/PHENOMENA_V1.md` and `demos/S017.md` describe
 the laws, boundaries and preserved demonstration. No model inference is involved.
-Next is S018, time and continuity. Older campaign records below are retained history.
+**S018 adds time and continuity in Habitat 0.5.0.** `time.remaining` reads the
+original active budget; `time.sleep` requests a bounded active-time wake only
+under `extensions.runtime_policy.id: self-scheduled-v1`. The optional
+`max_sleep_s` is bounded to 1-3600. Waiting admits no model input and injects no
+message; sleeping consumes budget, operator pause does not, and deadlines win.
+Protected wake state survives checkpoints. This installs no OS scheduler.
+
+```text
+uv run ols run experiments/habitat/s018-parent-demo.json --pause-after-steps 6
+uv run ols resume <parent archive>
+uv run ols run experiments/habitat/s018-child-demo.json --from-run <parent archive>
+```
+
+Lineage is operator-only and requires a verified completed parent's final
+checkpoint under the selected data root. Only protected workspace files and
+SQLite memory transfer, never the live workspace or source authority. Child
+archives retain pinned source evidence; parent sidecars reference their children
+without changing existing logs/summary. Each archive verifies independently.
+Permissions, budget, model, conversation, field/wake state and trusted tool
+registrations start fresh. Saved executable source must be revalidated to become
+a child tool. Builder's `docs/habitat/demos/S018.md` records the scripted two-run
+demonstration. No cognitive-continuity or autonomy claim follows.
+Next is S019, Habitat v1 assembly. Older campaign records below are retained history.
 
 S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
 `stats.describe` and `stats.regress`. Discovery, demonstration, invocation,

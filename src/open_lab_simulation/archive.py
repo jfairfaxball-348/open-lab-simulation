@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import phenomena, policies
+from . import lineage, phenomena, policies, run_time
 from .artifacts import read_index
 from .checkpoints import CheckpointError, checkpoint_events, pruned_ids, read_checkpoint
 from .contracts import Contracts, canonical_json, jsonl_lines, sha256_text, validate_event_stream
@@ -45,6 +45,7 @@ def verify_archive(
         return [*problems, "the event log is empty"]
 
     events = [json.loads(line) for line in lines]
+    problems += lineage.verify(archive, events)
     field_problems, field_checkpoints = phenomena.replay(config, events)
     problems += field_problems
     policy = None
@@ -62,6 +63,8 @@ def verify_archive(
                 problems.append("model and runtime policy differ")
         except (OSError, ValueError, TypeError):
             problems.append("runtime policy is missing or unreadable")
+    time_problems, wake_checkpoints = run_time.verify(config, policy, events)
+    problems += time_problems
     for event in events:
         ext = event["payload"].get("extensions", {})
         if event["type"] == "recovery" and "runtime_policy" in ext:
@@ -135,6 +138,16 @@ def verify_archive(
                 continue
             try:
                 metadata, runtime = read_checkpoint(archive, event, events, contracts)
+                if "time_state" in runtime:
+                    try:
+                        run_time.Clock(config, None, policy, lambda: 0, runtime["time_state"])
+                        target = runtime["time_state"]["wake_at_elapsed_ms"]
+                        if target != wake_checkpoints.get(ident):
+                            problems.append(f"{ident}: private wake target differs from journal")
+                    except (ValueError, TypeError) as error:
+                        problems.append(f"{ident}: invalid private wake state ({error})")
+                elif policy and policy["id"] == policies.SCHEDULED:
+                    problems.append(f"{ident}: scheduled policy has no private wake state")
                 if (config.get("extensions", {}).get("phenomena") is not None
                         and runtime.get("phenomena") != field_checkpoints.get(ident)):
                     problems.append(f"{ident}: private field differs from replay")

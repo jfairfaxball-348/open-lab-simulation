@@ -1,0 +1,163 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "skills.list",
+  "version": "0.1.0",
+  "name": "List procedural skills",
+  "summary": "Find saved skills by keyword, with bounded pages of summaries.",
+  "description": "Find saved procedural notes. All whitespace-separated query words must occur, case-insensitively, as substrings in id, title, summary or tags. Results are sorted by id. Page with limit and next_offset. This lists notes, not executable capabilities; use skills.get for full steps and examples.",
+  "categories": [
+    "skills",
+    "memory"
+  ],
+  "keywords": [
+    "procedure",
+    "reuse",
+    "notes",
+    "skill",
+    "list"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1000
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "skills": {
+        "type": "array",
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,63}$",
+              "maxLength": 64
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "minItems": 0,
+              "maxItems": 20
+            },
+            "provenance": {
+              "type": "object",
+              "properties": {
+                "origin": {
+                  "const": "agent"
+                }
+              },
+              "required": [
+                "origin"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "summary",
+            "tags",
+            "provenance"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "total": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "next_offset": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 0
+      }
+    },
+    "required": [
+      "skills",
+      "total",
+      "next_offset"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "filesystem": "workspace_read",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 64
+  },
+  "demonstrations": [
+    {
+      "id": "empty",
+      "title": "List an empty skill store",
+      "input": {},
+      "expected_output": {
+        "skills": [],
+        "total": 0,
+        "next_offset": null
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "empty"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "At most 1000 store entries and 100000 UTF-8 bytes per note; list pages contain at most 50 summaries.",
+    "Agent-owned workspace files can be edited directly. Invalid stored data is refused visibly; replace=true can repair a damaged note.",
+    "Procedures are not validated executable tools. No new permissions, automatic execution or cross-run sharing."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid, linked, oversized or damaged skill data, or duplicate save without replace.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Inspect the workspace note, repair it or explicitly replace it. Use a fresh slug for a new skill."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

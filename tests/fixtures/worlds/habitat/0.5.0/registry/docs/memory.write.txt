@@ -1,0 +1,162 @@
+# Memory write (memory.write)
+
+## categories
+
+[
+  "memory"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "key": "idea",
+      "revision": 1
+    },
+    "id": "basic",
+    "input": {
+      "key": "idea",
+      "value": "Keep notes in NOTES.md."
+    },
+    "title": "Empty workspace memory example"
+  }
+]
+
+## description
+
+Store a named text note in this run’s durable SQLite memory. Memory is agent-owned state at .memory.sqlite in the workspace. NOTES.md is the convention for free-form working notes; it is not created automatically. Memory contains no permissions or supervisor state. Read operations return an empty list before the first write.
+
+## failure_modes
+
+[
+  {
+    "condition": "Database is corrupt, locked or inaccessible.",
+    "recovery": "Use working notes in NOTES.md; memory may need restoring from a checkpoint.",
+    "symptom": "Capability error."
+  }
+]
+
+## id
+
+memory.write
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "value": {
+      "maxLength": 20000,
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "value"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "notes",
+  "remember",
+  "recall",
+  "write"
+]
+
+## limitations
+
+[
+  "Values are text, at most 20000 characters; keys are at most 128 characters.",
+  "Listing/search return at most 100 entries, ordered by key; no embeddings.",
+  "Search case folding uses SQLite lower (ASCII); the substring is literal, not a SQL pattern.",
+  "The agent may overwrite its own database with workspace tools; corruption is an error."
+]
+
+## name
+
+Memory write
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "key": {
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "key",
+    "revision"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_write",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 16,
+  "timeout_s": 5,
+  "typical_duration_s": 0.01
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "basic"
+  ]
+}
+
+## stability
+
+experimental
+
+## summary
+
+Store a named text note in this run’s durable SQLite memory.
+
+## version
+
+0.1.0
