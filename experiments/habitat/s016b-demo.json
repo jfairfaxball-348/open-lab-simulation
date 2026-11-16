@@ -1,0 +1,202 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s016b-demo",
+  "title": "S016b: sandbox-validate, rediscover and reuse a pinned agent tool across resume",
+  "research_question": "None. Fixed scripted engineering demonstration, not autonomy evidence.",
+  "created_at": "2026-11-16T00:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check",
+    "habitat",
+    "s016b"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "habitat",
+    "version": "0.3.0",
+    "content_digest": "dbab97a3cc5f7a35a1586b0e2bd8073f0d4213d928ffaf18ad0513d0b452231b"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 20,
+    "resources": {
+      "ram_mb": 512,
+      "cpu_cores": 1,
+      "max_processes": 64,
+      "disk_mb": 64
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "create reusable tool"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "tools.create"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "double.py",
+                  "text": "def run(arguments):\n    return {\"value\": arguments[\"value\"] * 2}\n"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "tools.create",
+                "arguments": {
+                  "id": "agent.double",
+                  "source_path": "double.py",
+                  "name": "Double an integer",
+                  "summary": "Double an integer.",
+                  "description": "Returns twice the input integer.",
+                  "keywords": [
+                    "double",
+                    "arithmetic"
+                  ],
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "output_schema": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "examples": [
+                    {
+                      "input": {
+                        "value": 3
+                      },
+                      "expected_output": {
+                        "value": 6
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.write",
+                "arguments": {
+                  "path": "double.py",
+                  "text": "raise RuntimeError(\"changed workspace source must not replace registration\")\n",
+                  "overwrite": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "double arithmetic"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "agent.double"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "agent.double",
+                "arguments": {
+                  "value": 7
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.demonstrate",
+              "arguments": {
+                "id": "agent.double"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 4
+  },
+  "capabilities": {
+    "agent_created_tools": true
+  }
+}

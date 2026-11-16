@@ -1,0 +1,110 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "workspace.write",
+  "version": "0.1.0",
+  "name": "Write workspace text",
+  "summary": "Write UTF-8 text to a relative workspace file.",
+  "description": "Creates parent directories and a new UTF-8 file. Existing files are refused unless overwrite is true. Returns the relative path and byte count. Does not execute the text.",
+  "categories": [
+    "workspace",
+    "files"
+  ],
+  "keywords": [
+    "write",
+    "save",
+    "file",
+    "text",
+    "create",
+    "notes"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "path",
+      "text"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "text": {
+        "type": "string",
+        "maxLength": 250000
+      },
+      "overwrite": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "path",
+      "bytes_written"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "bytes_written": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 16
+  },
+  "demonstrations": [
+    {
+      "id": "basic",
+      "title": "Basic invocation in an empty workspace",
+      "input": {
+        "path": "notes/hello.txt",
+        "text": "Hello laboratory!\n"
+      },
+      "expected_output": {
+        "path": "notes/hello.txt",
+        "bytes_written": 18
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "basic"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "No network access or code execution.",
+    "Forward-slash relative paths only; traversal, absolute paths, links and Windows special names are refused.",
+    "Process-tier path checks are not an OS sandbox; concurrent path replacement is not contained.",
+    "At most 250000 Unicode characters per call. Writes are not atomic; interrupted writes may be partial."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid arguments or unavailable resource.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Check the schema, permissions and relative path."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

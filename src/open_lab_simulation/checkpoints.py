@@ -165,7 +165,7 @@ def write_checkpoint(
         check()
         runtime = {k: state[k] for k in ("steps", "script_cursor", "call_count", "tokens_used")}
         runtime["memory_present"] = (workspace / ".memory.sqlite").is_file()
-        for key in ("policy_state", "policy_sha256"):
+        for key in ("policy_state", "policy_sha256", "agent_tools"):
             if key in state:
                 runtime[key] = state[key]
         write_json(stage / FILES["conversation"], state["messages"])

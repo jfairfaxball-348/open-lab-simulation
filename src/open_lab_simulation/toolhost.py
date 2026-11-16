@@ -22,6 +22,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from . import faults
+from .agent_tools import CREATE, AgentTools
 from .container import WORKSPACE_MOUNT, Backend, ContainerUnavailable, container_name
 from .paths import minimal_environment
 from .registry import META_SCHEMAS, Registry
@@ -76,6 +77,10 @@ class ToolHost:
         sandbox: Sandbox | None = None,
         before_execute=None,
         service=None,
+        agent_tools_enabled=False,
+        run_id=None,
+        contracts=None,
+        registrations=None,
     ):
         self.capabilities = capabilities
         self.workspace = workspace
@@ -90,6 +95,13 @@ class ToolHost:
         self.sandbox = sandbox
         self.before_execute = before_execute
         self.service = service
+        self.agent_tools = None
+        if agent_tools_enabled:
+            if sandbox is None or contracts is None or not run_id:
+                raise ValueError("agent tools require a configured container sandbox")
+            self.agent_tools = AgentTools(self, run_id, contracts, registrations)
+        elif registrations:
+            raise ValueError("cannot restore disabled agent tools")
 
     def call(self, capability_id: Any, arguments: Any) -> dict[str, Any]:
         """Run one tool call and return what the model is told about it."""
@@ -127,6 +139,15 @@ class ToolHost:
         return {key: value for key, value in outcome.items() if key != "duration_ms"}
 
     def _unavailable(self, capability_id: str) -> str | None:
+        if capability_id == "tools.create" or (self.agent_tools and
+                                             capability_id in self.agent_tools.records):
+            if self.agent_tools is None or self.sandbox is None:
+                return "agent-created tools are not enabled in this experiment"
+            if "python.run" not in self.capabilities:
+                return "agent tools require python.run"
+            denied = self._unavailable("python.run")
+            if denied:
+                return f"python.run unavailable: {denied}"
         if capability_id in self.deny or (self.allow is not None
                                           and capability_id not in self.allow):
             return "not available in this experiment"
@@ -184,6 +205,20 @@ class ToolHost:
             return {"status": "error", "error": f"invalid_input: {problem}"}
 
         invocation = manifest["invocation"]
+        if invocation == CREATE or (self.agent_tools and
+                                    capability_id in self.agent_tools.records):
+            if self.agent_tools is None or self.sandbox is None:
+                return {"status": "denied", "error": "agent tools require the container tier"}
+            if self.before_execute and self.before_execute(capability_id, arguments):
+                return json.loads(json.dumps(faults.OUTCOME))
+            try:
+                return ({"status": "ok", "result": self.agent_tools.create(arguments)}
+                        if invocation == CREATE else self.agent_tools.invoke(
+                            capability_id, arguments))
+            except OSError:
+                return {"status": "error", "error": "agent_tool_error: cannot read tool source"}
+            except (ValueError, RecursionError) as error:
+                return {"status": "error", "error": f"agent_tool_error: {error}"}
         if invocation == {"interface": "mcp", "server": "supervisor-gateway",
                           "tool": "models.ask"}:
             if self.before_execute and self.before_execute(capability_id, arguments):

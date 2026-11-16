@@ -1,0 +1,137 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "workspace.edit",
+  "version": "0.1.0",
+  "name": "Edit workspace text",
+  "summary": "Change part of a workspace text file by exact replacement, or append to it.",
+  "description": "Replacement: give old_text exactly as it appears (read the file first) and new_text; it must occur once unless replace_all is true. Append: give append_text to add to the end, creating the file if needed (useful for logs and journals). The file is replaced atomically. Returns the number of replacements and the new size.",
+  "categories": [
+    "workspace",
+    "files"
+  ],
+  "keywords": [
+    "edit",
+    "modify",
+    "change",
+    "fix",
+    "replace",
+    "append",
+    "update",
+    "patch"
+  ],
+  "invocation": {
+    "interface": "python",
+    "entrypoint": "implementation:run"
+  },
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "old_text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 250000
+      },
+      "new_text": {
+        "type": "string",
+        "maxLength": 250000
+      },
+      "replace_all": {
+        "type": "boolean",
+        "default": false
+      },
+      "append_text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 250000
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "path",
+      "replacements",
+      "bytes_written"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "replacements": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "bytes_written": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none"
+  },
+  "resources": {
+    "timeout_s": 5,
+    "ram_mb": 64
+  },
+  "demonstrations": [
+    {
+      "id": "journal",
+      "title": "Append a line to a journal, creating it",
+      "input": {
+        "path": "journal.md",
+        "append_text": "Started a journal.\n"
+      },
+      "expected_output": {
+        "path": "journal.md",
+        "replacements": 0,
+        "bytes_written": 19
+      }
+    },
+    {
+      "id": "fix",
+      "title": "Fix a mistake in a program you wrote",
+      "explanation": "Runs against your own workspace; the file and text must exist.",
+      "input": {
+        "path": "hello.py",
+        "old_text": "pritn(",
+        "new_text": "print("
+      },
+      "deterministic": false
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "journal"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "UTF-8 text only; files over 5000000 bytes are refused.",
+    "Replacement is exact text matching, not regular expressions.",
+    "Forward-slash relative paths only; links and traversal are refused."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Invalid arguments or unavailable resource.",
+      "symptom": "A validation or capability error.",
+      "recovery": "Check the schema, permissions and relative path."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}

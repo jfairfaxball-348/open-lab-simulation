@@ -94,6 +94,8 @@ class Registry:
             ) from None
 
     def describe(self, entry: dict) -> str:
+        if "documentation" in entry:
+            return entry["documentation"]
         return (self.directory / entry["documentation_path"]).read_text(encoding="utf-8")
 
     def search(self, query: str, available: set[str], category: str | None = None) -> list[dict]:
@@ -107,5 +109,7 @@ class Registry:
                         for field, weight in _FIELD_WEIGHTS.items())
             if score:
                 ranked.append({"id": ident, "summary": entry["summary"],
-                               "categories": entry["categories"], "score": score})
+                               "categories": entry["categories"], "score": score,
+                               **({"provenance": entry["provenance"]}
+                                  if "provenance" in entry else {})})
         return sorted(ranked, key=lambda hit: (-hit["score"], hit["id"]))[:10]

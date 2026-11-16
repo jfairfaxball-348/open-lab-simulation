@@ -118,9 +118,15 @@ def _unsupported(config: dict[str, Any], world: World) -> str | None:
         for rule in kinds
     ):
         return "the world's contracts cannot record the discovery preamble; rebuild the world"
-    if config.get("capabilities", {}).get("agent_created_tools"):
-        return "agent-created tools are not implemented"
     tier = world.manifest["environment"]["isolation"]["minimum_tier"]
+    if config.get("capabilities", {}).get("agent_created_tools"):
+        from .agent_tools import CREATE
+
+        if tier != "container" or not config["permissions"].get("subprocess"):
+            return "agent-created tools require container isolation and subprocess permission"
+        if ("tools.create" not in world.capabilities or "python.run" not in world.capabilities
+                or world.capabilities["tools.create"][1]["invocation"] != CREATE):
+            return "agent-created tools require tools.create and python.run in the world"
     if config["permissions"].get("subprocess") and tier != "container":
         return "running agent-supplied code needs the container isolation tier"
     if config["permissions"]["network"] == "allowlist":
@@ -862,6 +868,8 @@ def _run_prepared(
             "benchmark_fault": faults.enabled(config),
             "permissions": config["permissions"],
             "allow": capabilities.get("allow"),
+            "agent_created_tools": capabilities.get("agent_created_tools", False),
+            "run_id": run_id,
             "deny": capabilities.get("deny"),
             "model": worker_model,
             "actor": agent,

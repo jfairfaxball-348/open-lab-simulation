@@ -24,10 +24,21 @@ uv run ols verify <archive>
 The live container acceptance test saves a procedure with examples, restores
 its protected checkpoint, finds and retrieves it, then reuses the scripted
 procedure. No model inference or runtime change is involved. Skills are
-agent-owned JSON notes in `.skills/`, not executable registrations. S016b
-(validated sandboxed self-made tools) is next; `agent_created_tools` remains
-refused. Builder's `docs/habitat/demos/S016a.md` records the preserved archive
-and limits. The older campaign records below are retained history.
+agent-owned JSON notes in `.skills/`, not executable registrations. Builder's
+`docs/habitat/demos/S016a.md` records that preserved archive and its limits.
+
+**S016b adds executable tools in Habitat 0.3.0.** With explicit
+`capabilities.agent_created_tools: true` on a container world, `tools.create`
+validates examples through `python.run`, then pins the entry source and generated
+manifest in protected runtime/checkpoint state. Tools use the same discovery
+interfaces; editing the original workspace source cannot replace a registration.
+Permissions and allow/deny checks apply to both tool and runner. Workspace
+data and imported modules remain mutable; examples prove only those examples.
+The service is unavailable without opt-in and is never offered on the process
+tier. The scripted `experiments/habitat/s016b-demo.json` can be paused after
+step four and resumed using the commands above. Builder's
+`docs/habitat/demos/S016b.md` records the verified demonstration and limits.
+Next is S017, world phenomena. Older campaign records below are retained history.
 
 S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
 `stats.describe` and `stats.regress`. Discovery, demonstration, invocation,

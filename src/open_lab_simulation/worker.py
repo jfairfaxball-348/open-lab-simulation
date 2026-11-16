@@ -22,6 +22,7 @@ from typing import Any
 
 from . import policies
 from .container import Backend
+from .contracts import Contracts
 from .model import ModelClient, ModelError, OpenAIChatModel, ScriptedModel
 from .registry import META_TOOLS, PREAMBLE, Registry
 from .toolhost import Sandbox, ToolHost
@@ -142,6 +143,8 @@ def run_loop(
                 "call_count": host._calls,
                 "tokens_used": tokens_used,
                 "policy_sha256": policies.digest(policy), "policy_state": scheduling,
+                **({"agent_tools": host.agent_tools.records}
+                   if host.agent_tools and host.agent_tools.records else {}),
             },
             final,
         )
@@ -294,6 +297,9 @@ def main() -> int:
         sandbox=sandbox,
         before_execute=channel.before_execute if spec.get("benchmark_fault") else None,
         service=channel.specialist,
+        agent_tools_enabled=spec.get("agent_created_tools", False),
+        run_id=spec.get("run_id"), contracts=Contracts(release / "contracts"),
+        registrations=spec.get("runtime_state", {}).get("agent_tools"),
     )
     host._calls = spec.get("runtime_state", {}).get("call_count", 0)
     reason, steps = run_loop(
