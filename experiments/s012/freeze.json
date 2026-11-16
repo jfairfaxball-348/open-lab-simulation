@@ -1,0 +1,14 @@
+{
+  "experiment_id": "s012-001",
+  "config_sha256": "58a96b3c8f868482ae7248377422ca25277fde8bf18259baeb10d799a461a173",
+  "prompt_sha256": "8ceedc564faf5844df0a30c54ac2620e46b25df54736463e69d23ef1cd238216",
+  "world_digest": "03d9ea8fb2c13a9bbd4d0cdbf1e979cbc6db3a1df839a940e70d4d47059735e6",
+  "catalog_sha256": "b41c78924c868554b741dda6716d5b891ed4b3b7fa5f6046d8c3902ffab3b137",
+  "provider_profile_sha256": "56ffb8f0718de74b3c853c8d03248dee8ea2604ca7e5adb2c9dd84669f7b55f8",
+  "launch_authority": "Pending explicit owner run next session instruction in a new chat for this exact one-run proposal. No launch in preparation chat.",
+  "max_runs": 1,
+  "max_requests": 180,
+  "min_interval_s": 20,
+  "max_attempts_per_step": 2,
+  "request_timeout_s": 180
+}

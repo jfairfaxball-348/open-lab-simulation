@@ -678,6 +678,17 @@ The live integration test is `tests/test_habitat_v1.py` (set
 engineering demonstrations; they make no autonomy claim and use no model
 inference. The Builder owns the twelve-freedom evidence map and S012 draft.
 
+## S012 next-chat preparation
+
+S012 preparation installs the exact owner-approved prompt in
+`experiments/s012/initial-prompt.txt` and a frozen proposed one-hour Luna
+configuration in `first-observation.json`. `freeze.json` binds its bytes, world,
+catalog and existing broker profile. `uv run python experiments/s012/check_ready.py`
+checks local readiness without launching a run or making a model request; it
+refuses an already allocated `s012-001` run. See the Builder's `NEXT_SESSION.md`
+for the new-chat owner trigger, scoped proposed 180-request allowance and
+registration. No launch is authorised from the preparation chat.
+
 ## Licence
 
 Apache License 2.0; see [LICENSE](LICENSE).
