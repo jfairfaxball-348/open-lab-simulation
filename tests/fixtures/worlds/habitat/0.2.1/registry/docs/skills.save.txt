@@ -1,0 +1,241 @@
+# Save procedural skills (skills.save)
+
+## categories
+
+[
+  "skills",
+  "memory"
+]
+
+## demonstrations
+
+[
+  {
+    "expected_output": {
+      "id": "sum-check",
+      "path": ".skills/sum-check.json",
+      "provenance": {
+        "origin": "agent"
+      },
+      "replaced": false
+    },
+    "id": "save",
+    "input": {
+      "examples": [
+        "Input [2, 3, 5] gives 10."
+      ],
+      "id": "sum-check",
+      "steps": [
+        "Run python.run with print(sum([2, 3, 5])).",
+        "Inspect stdout and exit_code."
+      ],
+      "summary": "Check an arithmetic sum using Python.",
+      "tags": [
+        "arithmetic",
+        "python"
+      ],
+      "title": "Check a sum"
+    },
+    "title": "Save a sum-check procedure"
+  }
+]
+
+## description
+
+Save a named procedural note with ordered steps and examples. Existing ids require replace=true. Notes are UTF-8 JSON in .skills/<id>.json in your workspace and survive checkpoints. They are data, never executable registrations. Use skills.list to find notes and skills.get to retrieve them.
+
+## failure_modes
+
+[
+  {
+    "condition": "Invalid, linked, oversized or damaged skill data, or duplicate save without replace.",
+    "recovery": "Inspect the workspace note, repair it or explicitly replace it. Use a fresh slug for a new skill.",
+    "symptom": "A validation or capability error."
+  }
+]
+
+## id
+
+skills.save
+
+## input_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "examples": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "type": "array"
+    },
+    "id": {
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "type": "string"
+    },
+    "replace": {
+      "type": "boolean"
+    },
+    "steps": {
+      "items": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 50,
+      "minItems": 1,
+      "type": "array"
+    },
+    "summary": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "type": "string"
+    },
+    "tags": {
+      "items": {
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 0,
+      "type": "array"
+    },
+    "title": {
+      "maxLength": 120,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "summary",
+    "steps",
+    "examples"
+  ],
+  "type": "object"
+}
+
+## invocation
+
+{
+  "entrypoint": "implementation:run",
+  "interface": "python"
+}
+
+## keywords
+
+[
+  "procedure",
+  "reuse",
+  "notes",
+  "skill",
+  "save"
+]
+
+## limitations
+
+[
+  "At most 1000 store entries and 100000 UTF-8 bytes per note; list pages contain at most 50 summaries.",
+  "Agent-owned workspace files can be edited directly. Invalid stored data is refused visibly; replace=true can repair a damaged note.",
+  "Procedures are not validated executable tools. No new permissions, automatic execution or cross-run sharing."
+]
+
+## name
+
+Save procedural skills
+
+## output_schema
+
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9-]{0,63}$",
+      "type": "string"
+    },
+    "path": {
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "origin": {
+          "const": "agent"
+        }
+      },
+      "required": [
+        "origin"
+      ],
+      "type": "object"
+    },
+    "replaced": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "path",
+    "replaced",
+    "provenance"
+  ],
+  "type": "object"
+}
+
+## permissions
+
+{
+  "filesystem": "workspace_write",
+  "network": "none"
+}
+
+## provenance
+
+{
+  "origin": "builder"
+}
+
+## resources
+
+{
+  "ram_mb": 64,
+  "timeout_s": 5
+}
+
+## schema
+
+open-lab/capability
+
+## schema_version
+
+1.0.1
+
+## self_test
+
+{
+  "demonstrations": [
+    "save"
+  ],
+  "timeout_s": 10
+}
+
+## stability
+
+experimental
+
+## summary
+
+Save or explicitly replace a reusable procedure with steps and examples.
+
+## version
+
+0.1.0

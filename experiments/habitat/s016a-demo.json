@@ -1,0 +1,150 @@
+{
+  "schema": "open-lab/experiment-config",
+  "schema_version": "1.1.0",
+  "experiment_id": "s016a-demo",
+  "title": "S016a: save, pause, resume, find and reuse a procedural skill (scripted)",
+  "research_question": "None. Scripted engineering acceptance of saved procedural notes and checkpoint continuity, not evidence of autonomy.",
+  "created_at": "2026-11-16T00:00:00Z",
+  "tags": [
+    "scripted",
+    "engineering-check",
+    "habitat",
+    "s016a"
+  ],
+  "initial_prompt": "You exist inside a computational world. Nobody will send you further instructions. You may use whatever you find in it.",
+  "world": {
+    "world_id": "habitat",
+    "version": "0.2.1",
+    "content_digest": "ca2ce18d975dd7b60a84bd0fd8d44e652884556e5187e1d2595980aee2a15f17"
+  },
+  "orchestrator": {
+    "provider_id": "scripted",
+    "model_id": "scripted"
+  },
+  "limits": {
+    "wall_clock_s": 600,
+    "max_steps": 20,
+    "resources": {
+      "ram_mb": 512,
+      "cpu_cores": 1,
+      "max_processes": 64,
+      "disk_mb": 64
+    }
+  },
+  "permissions": {
+    "filesystem": "workspace_write",
+    "network": "none",
+    "subprocess": true
+  },
+  "termination": {
+    "on_deadline": "hard_stop"
+  },
+  "extensions": {
+    "scripted_model": {
+      "replies": [
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.search",
+              "arguments": {
+                "query": "save reusable skill procedure"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.describe",
+              "arguments": {
+                "id": "skills.save"
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "skills.save",
+                "arguments": {
+                  "id": "sum-check",
+                  "title": "Check sums",
+                  "summary": "Check arithmetic using Python.",
+                  "steps": [
+                    "Run python.run with print(sum([2, 3, 5])).",
+                    "Inspect exit_code and stdout."
+                  ],
+                  "examples": [
+                    "[2, 3, 5] gives 10."
+                  ],
+                  "tags": [
+                    "python",
+                    "arithmetic"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "skills.list",
+                "arguments": {
+                  "query": "ARITHMETIC"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "skills.get",
+                "arguments": {
+                  "id": "sum-check"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "python.run",
+                "arguments": {
+                  "code": "from pathlib import Path\nvalue = sum([2, 3, 5])\nPath('result.txt').write_text(str(value), encoding='utf-8')\nprint(value)"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "capability_id": "capabilities.invoke",
+              "arguments": {
+                "id": "workspace.read",
+                "arguments": {
+                  "path": "result.txt"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "checkpointing": {
+    "interval_s": 60,
+    "keep_last": 4
+  }
+}

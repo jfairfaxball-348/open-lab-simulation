@@ -11,6 +11,24 @@ never code.
 
 ## Status
 
+**Habitat development (ADR-0022 in the Builder) is active.** S016a adds the
+generated Habitat 0.2.1 fixture and a scripted saved-skill demonstration:
+
+```text
+uv run ols run experiments/habitat/s016a-demo.json --pause-after-steps 3
+uv run ols verify <archive>
+uv run ols resume <archive>
+uv run ols verify <archive>
+```
+
+The live container acceptance test saves a procedure with examples, restores
+its protected checkpoint, finds and retrieves it, then reuses the scripted
+procedure. No model inference or runtime change is involved. Skills are
+agent-owned JSON notes in `.skills/`, not executable registrations. S016b
+(validated sandboxed self-made tools) is next; `agent_created_tools` remains
+refused. Builder's `docs/habitat/demos/S016a.md` records the preserved archive
+and limits. The older campaign records below are retained history.
+
 S008c engineering acceptance uses the generated minimal 0.8.0 fixture containing
 `stats.describe` and `stats.regress`. Discovery, demonstration, invocation,
 invalid-input/degenerate cases and deny lists are tested through the supervisor;

@@ -1,0 +1,144 @@
+{
+  "schema": "open-lab/capability",
+  "schema_version": "1.0.1",
+  "id": "math.evaluate",
+  "version": "0.1.0",
+  "name": "Arithmetic evaluator",
+  "summary": "Evaluate an arithmetic expression exactly and return the result.",
+  "description": "Evaluates an expression built from integers, decimals, parentheses and the operators + - * / ** %. Arithmetic is exact: 'exact' is the result as an integer or a fraction string such as '3/4', and 'value' is the same result as a JSON number (rounded to a float when it is not a small integer). It is not a programming language: there are no variables, functions or imports.",
+  "categories": [
+    "math"
+  ],
+  "keywords": [
+    "calculator",
+    "arithmetic",
+    "compute",
+    "expression"
+  ],
+  "invocation": {
+    "interface": "subprocess",
+    "command": [
+      "python",
+      "-I",
+      "math_evaluate.py"
+    ],
+    "input_mode": "json_stdin",
+    "output_mode": "json_stdout"
+  },
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "expression"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "expression": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": [
+      "value",
+      "exact"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "value": {
+        "type": "number"
+      },
+      "exact": {
+        "type": "string"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "none",
+    "network": "none",
+    "subprocess": false
+  },
+  "resources": {
+    "timeout_s": 5,
+    "typical_duration_s": 0.2,
+    "ram_mb": 64
+  },
+  "dependencies": {
+    "executables": [
+      "python"
+    ]
+  },
+  "demonstrations": [
+    {
+      "id": "fraction",
+      "title": "A sum of fractions",
+      "input": {
+        "expression": "1/2 + 1/4"
+      },
+      "expected_output": {
+        "value": 0.75,
+        "exact": "3/4"
+      }
+    },
+    {
+      "id": "integer-power",
+      "title": "An integer power",
+      "input": {
+        "expression": "2 ** 10"
+      },
+      "expected_output": {
+        "value": 1024,
+        "exact": "1024"
+      }
+    },
+    {
+      "id": "exact-decimals",
+      "title": "Decimals are exact",
+      "explanation": "0.1 + 0.2 is exactly 3/10; there is no floating-point error in 'exact'.",
+      "input": {
+        "expression": "0.1 + 0.2"
+      },
+      "expected_output": {
+        "value": 0.3,
+        "exact": "3/10"
+      }
+    }
+  ],
+  "self_test": {
+    "demonstrations": [
+      "fraction",
+      "integer-power",
+      "exact-decimals"
+    ],
+    "timeout_s": 10
+  },
+  "limitations": [
+    "Expressions are limited to 500 characters.",
+    "Exponents must be whole numbers no larger than 1000 in magnitude, and results are limited to about 6000 decimal digits.",
+    "A result too large for a floating-point number is reported as an error, even though it could be written exactly.",
+    "No symbolic algebra; every operand must be a number."
+  ],
+  "failure_modes": [
+    {
+      "condition": "Division or modulo by zero.",
+      "symptom": "The call returns an error of kind 'capability_error' with message 'division by zero'.",
+      "recovery": "Check the divisor before calling."
+    },
+    {
+      "condition": "The expression contains names, calls, attribute access or unsupported operators.",
+      "symptom": "The call returns an error of kind 'capability_error' whose message names the unsupported element.",
+      "recovery": "Reduce the expression to numbers and the supported operators."
+    },
+    {
+      "condition": "An exponent or result exceeds the size limits.",
+      "symptom": "The call returns an error of kind 'capability_error' with message 'exponent too large (limit 1000)' or 'result too large'.",
+      "recovery": "Break the calculation into smaller steps or accept an approximate answer."
+    }
+  ],
+  "provenance": {
+    "origin": "builder"
+  },
+  "stability": "experimental"
+}
